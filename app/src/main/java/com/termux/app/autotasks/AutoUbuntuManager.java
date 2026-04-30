@@ -413,11 +413,10 @@ public class AutoUbuntuManager {
           .append("auto_ok=0; fi; ")
           .append("fi; ");
 
-        // ── Step 2.9: 注入 Claude Code 安装向导（幂等，每次启动均执行）────────
-        // inner 脚本由 AutoClaudeManager 在后台写入 Termux $HOME；
-        // 此处将其复制到 Ubuntu rootfs 并在 /root/.bashrc 追加 source hook。
-        // inner 脚本首行检查 claude 是否已安装——已装则自我清除，未装则交互引导。
-        String claudeInnerPath = new File(mActivity.getFilesDir(),
+        // ── Step 2.9: 注入 AgentServer + 运行 Claude 原生安装（native-termux branch）────
+        // Claude 不再注入到 Ubuntu，而是直接在 Termux 终端运行原生安装脚本。
+        // AgentServer 仍然注入到 Ubuntu .bashrc（它是 glibc 二进制，必须在 Ubuntu 内运行）。
+        String claudeNativePath = new File(mActivity.getFilesDir(),
             AutoClaudeManager.INNER_SCRIPT_REL).getAbsolutePath();
         String capabilitiesPath = new File(mActivity.getFilesDir(),
             CapabilitiesManager.CAPABILITIES_FILE_REL).getAbsolutePath();
@@ -427,51 +426,39 @@ public class AutoUbuntuManager {
             AutoAgentServerManager.INNER_SCRIPT_REL).getAbsolutePath();
         sb.append("if [ \"$auto_ok\" = \"1\" ]; then ")
           .append("_ubr=\"$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu\"; ")
-          .append("_cis=\"").append(claudeInnerPath).append("\"; ")
           .append("if [ -d \"$_ubr/root\" ]; then ")
-          // 注入 claude 安装向导
-          .append("[ -f \"$_cis\" ] && cp \"$_cis\" \"$_ubr/root/.claude-setup.sh\" && ")
-          .append("{ grep -qF '.claude-setup' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
-          .append("printf '\\n[ -f ~/.claude-setup.sh ] && . ~/.claude-setup.sh\\n' ")
-          .append(">> \"$_ubr/root/.bashrc\"; }; ")
-          // 注入 AgentServer 安装包 + 安装向导（在 Claude hook 之后，确保安装时 Claude 已就绪）
+          // AgentServer: 复制安装包 + 注入 .bashrc hook（Ubuntu 侧，Claude 不再注入）
           .append("if [ -f \"").append(agentTgzPath).append("\" ] && [ -s \"").append(agentTgzPath).append("\" ]; then ")
           .append("mkdir -p \"$_ubr/tmp\" && ")
           .append("cp \"").append(agentTgzPath).append("\" \"$_ubr/tmp/agentserver-linux-arm64.tar.gz\" && ")
           .append("echo \"[*] agentserver 安装包已复制到 Ubuntu /tmp/\"; ")
-          .append("else echo \"[!] agentserver 安装包未就绪（路径: ").append(agentTgzPath).append("），将由脚本联网下载\"; fi; ")
+          .append("else echo \"[!] agentserver 安装包未就绪，将由脚本联网下载\"; fi; ")
           .append("[ -f \"").append(agentInnerPath).append("\" ] && ")
           .append("cp \"").append(agentInnerPath).append("\" \"$_ubr/root/.agentserver-setup.sh\" && ")
           .append("{ grep -qF '.agentserver-setup' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
           .append("printf '\\n[ -f ~/.agentserver-setup.sh ] && . ~/.agentserver-setup.sh\\n' ")
           .append(">> \"$_ubr/root/.bashrc\"; }; ")
-          // root/.bashrc 末尾注入 exec su - claude（幂等），使终端自动切换为 claude 用户
+          // Ubuntu root/.bashrc 末尾注入 exec su - claude（AgentServer 以 claude 用户运行）
           .append("{ grep -qF 'exec su - claude' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
           .append("printf '\\nexec su - claude\\n' >> \"$_ubr/root/.bashrc\"; }; ")
-          // 建 capabilities.json 软链接（放 /root/ 供 setup 阶段用，/home/claude/ 供运行时用）
+          // capabilities.json 软链接
           .append("ln -sf \"").append(capabilitiesPath).append("\" ")
           .append("\"$_ubr/root/capabilities.json\" 2>/dev/null; ")
-          // 建 termux-* wrapper 脚本（HTTP 桥接版）
-          // Termux 二进制为 Android bionic 编译，Ubuntu glibc 环境无法执行（exec 会报错）。
-          // 改用 curl 调用 ApiHttpBridgeServer（Android 侧 HTTP 服务，127.0.0.1:PORT）。
+          // termux-* HTTP 桥 wrapper（Ubuntu 内调用 Android HTTP API）
           .append("mkdir -p \"$_ubr/usr/local/bin\"; ")
           .append("_bp=").append(ApiHttpBridgeServer.PORT).append("; ")
           .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/battery\\n' \"$_bp\" ")
           .append("> \"$_ubr/usr/local/bin/termux-battery-status\" && ")
           .append("chmod +x \"$_ubr/usr/local/bin/termux-battery-status\" 2>/dev/null; ")
-          .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/camera\\n' \"$_bp\" ")
-          .append("> \"$_ubr/usr/local/bin/termux-camera-info\" && ")
-          .append("chmod +x \"$_ubr/usr/local/bin/termux-camera-info\" 2>/dev/null; ")
-          .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/sensors\\n' \"$_bp\" ")
-          .append("> \"$_ubr/usr/local/bin/termux-sensor\" && ")
-          .append("chmod +x \"$_ubr/usr/local/bin/termux-sensor\" 2>/dev/null; ")
           .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/wifi\\n' \"$_bp\" ")
           .append("> \"$_ubr/usr/local/bin/termux-wifi-connectioninfo\" && ")
           .append("chmod +x \"$_ubr/usr/local/bin/termux-wifi-connectioninfo\" 2>/dev/null; ")
-          .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/clipboard\\n' \"$_bp\" ")
-          .append("> \"$_ubr/usr/local/bin/termux-clipboard-get\" && ")
-          .append("chmod +x \"$_ubr/usr/local/bin/termux-clipboard-get\" 2>/dev/null; ")
-          .append("echo \"[*] Claude + AgentServer setup + capabilities ready.\"; fi; fi; ");
+          .append("echo \"[*] AgentServer setup injected.\"; fi; fi; ")
+          // Claude 原生安装：在 Termux 终端中直接运行（Ubuntu rootfs 已就绪，glibc 可用）
+          .append("if [ \"$auto_ok\" = \"1\" ] && [ -f \"").append(claudeNativePath).append("\" ]; then ")
+          .append("echo \"[*] 开始 Claude Code 原生安装...\"; ")
+          .append("bash \"").append(claudeNativePath).append("\"; ")
+          .append("fi; ");
 
         // ── Step 2.95: 在 Ubuntu 内创建 claude 用户（非交互），并建 capabilities 软链接 ──
         final String capPath = capabilitiesPath;

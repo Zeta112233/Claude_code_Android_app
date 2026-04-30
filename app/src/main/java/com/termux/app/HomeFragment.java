@@ -59,9 +59,10 @@ import java.util.Map;
 public class HomeFragment extends Fragment {
 
     // ── Termux 路径常量 ────────────────────────────────────────────────────
-    private static final String PREFIX  = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
-    private static final String BASH    = PREFIX + "/bin/bash";
-    private static final String PROOT_D = PREFIX + "/bin/proot-distro";
+    private static final String PREFIX        = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
+    private static final String BASH          = PREFIX + "/bin/bash";
+    // native-termux branch: claude runs directly in Termux via glibc wrapper
+    private static final String CLAUDE_NATIVE = TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin/claude";
 
     private final Handler mHandler = new Handler(Looper.getMainLooper());
 
@@ -172,7 +173,8 @@ public class HomeFragment extends Fragment {
                         + (startBaseUrl.isEmpty() ? "" : " ANTHROPIC_BASE_URL='" + urlEsc + "'")
                         + " claude";
                 a.addNewSessionFromHome();
-                terminal("proot-distro login ubuntu -- sh -c '" + startCmd + "'\r");
+                // native-termux: claude runs in Termux directly (no proot)
+                terminal(startCmd + "\r");
             }
         });
 
@@ -261,13 +263,14 @@ public class HomeFragment extends Fragment {
                         ? " --resume " + finalResumeId
                         : (doContinue ? " --continue" : "");
 
+                // native-termux: run claude binary directly in Termux (no proot-distro)
                 String claudeCmd = "printf '%s' '" + escaped + "'"
                         + " | ANTHROPIC_API_KEY='" + escapedKey + "'"
                         + (finalBaseUrl.isEmpty() ? "" : " ANTHROPIC_BASE_URL='" + escapedUrl + "'")
-                        + " claude -p --output-format stream-json --verbose"
+                        + " " + CLAUDE_NATIVE + " -p --output-format stream-json --verbose"
                         + sessionFlag;
 
-                ProcessBuilder pb = new ProcessBuilder(BASH, PROOT_D, "login", "ubuntu", "--", "sh", "-c", claudeCmd);
+                ProcessBuilder pb = new ProcessBuilder(BASH, "-c", claudeCmd);
                 setupEnv(pb.environment(), finalKey, finalBaseUrl);
                 pb.redirectErrorStream(false);
 
@@ -384,15 +387,16 @@ public class HomeFragment extends Fragment {
         updateStatus("● 就绪", 0xFF2E7D32);
     }
 
-    /** 设置子进程所需的 Termux + ubuntu 环境变量。 */
+    /** 设置子进程所需的 Termux 环境变量（native-termux branch）。
+     *  LD_LIBRARY_PATH 不在此设置，由 ~/bin/claude wrapper 脚本指向 Ubuntu glibc。 */
     private void setupEnv(Map<String, String> env, String apiKey, String baseUrl) {
-        env.put("PREFIX",           PREFIX);
-        env.put("HOME",             TermuxConstants.TERMUX_HOME_DIR_PATH);
-        env.put("TMPDIR",           TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
-        env.put("PATH",             TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH
-                                    + ":" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/applets");
-        env.put("LD_LIBRARY_PATH",  TermuxConstants.TERMUX_LIB_PREFIX_DIR_PATH);
-        env.put("LANG",             "en_US.UTF-8");
+        env.put("PREFIX",  PREFIX);
+        env.put("HOME",    TermuxConstants.TERMUX_HOME_DIR_PATH);
+        env.put("TMPDIR",  TermuxConstants.TERMUX_TMP_PREFIX_DIR_PATH);
+        env.put("PATH",    TermuxConstants.TERMUX_HOME_DIR_PATH + "/bin"
+                           + ":" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH
+                           + ":" + TermuxConstants.TERMUX_BIN_PREFIX_DIR_PATH + "/applets");
+        env.put("LANG",    "en_US.UTF-8");
         env.put("ANTHROPIC_API_KEY", apiKey);
         if (baseUrl != null && !baseUrl.isEmpty()) {
             env.put("ANTHROPIC_BASE_URL", baseUrl);
