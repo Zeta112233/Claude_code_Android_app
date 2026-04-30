@@ -454,9 +454,10 @@ public class AutoUbuntuManager {
           .append("> \"$_ubr/usr/local/bin/termux-wifi-connectioninfo\" && ")
           .append("chmod +x \"$_ubr/usr/local/bin/termux-wifi-connectioninfo\" 2>/dev/null; ")
           .append("echo \"[*] AgentServer setup injected.\"; fi; fi; ")
-          // Claude 原生安装：在 Termux 终端中直接运行（Ubuntu rootfs 已就绪，glibc 可用）
-          .append("if [ \"$auto_ok\" = \"1\" ] && [ -f \"").append(claudeNativePath).append("\" ]; then ")
-          .append("echo \"[*] 开始 Claude Code 原生安装...\"; ")
+          // Claude 原生安装：在 Termux 终端中直接运行（musl 自包含，不依赖 Ubuntu glibc）
+          // Ubuntu 已安装与否不影响此步骤，musl linker 由 App assets 提供
+          .append("if [ -f \"").append(claudeNativePath).append("\" ]; then ")
+          .append("echo \"[*] 开始 Claude Code 原生安装（musl，无需 Ubuntu）...\"; ")
           .append("bash \"").append(claudeNativePath).append("\"; ")
           .append("fi; ");
 
