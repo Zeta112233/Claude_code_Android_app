@@ -1204,7 +1204,7 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     }
 
     /**
-     * 将 API Key（和可选的 Base URL）直接写入 ubuntu 的 ~/.bashrc。
+     * 将 API Key（和可选的 Base URL）直接写入 Termux 的 ~/.bashrc。
      * 使用 Java File I/O，不向任何终端 session 发送命令。
      * @param key     ANTHROPIC_API_KEY 值
      * @param baseUrl ANTHROPIC_BASE_URL 值，空字符串表示使用官方默认（不写入）
@@ -1212,9 +1212,11 @@ public final class TermuxActivity extends AppCompatActivity implements ServiceCo
     public void setActiveApiKey(String key, String baseUrl) {
         try {
             String filesDir = getApplicationContext().getFilesDir().getAbsolutePath();
-            java.io.File bashrcFile = new java.io.File(
-                filesDir + "/usr/var/lib/proot-distro/installed-rootfs/ubuntu/root/.bashrc");
-            if (!bashrcFile.exists()) return;
+            java.io.File bashrcFile = new java.io.File(filesDir + "/../home/.bashrc");
+            if (!bashrcFile.exists()) {
+                bashrcFile.getParentFile().mkdirs();
+                bashrcFile.createNewFile();
+            }
 
             java.nio.charset.Charset utf8 = java.nio.charset.StandardCharsets.UTF_8;
             String content = new String(java.nio.file.Files.readAllBytes(bashrcFile.toPath()), utf8);

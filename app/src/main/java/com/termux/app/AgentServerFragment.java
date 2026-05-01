@@ -25,29 +25,29 @@ import java.util.function.Consumer;
 /**
  * AgentServer 配置与管理页面。
  *
- * 通过 proot-distro login ubuntu -- agentserver <subcommand> 与 Ubuntu 内的 agentserver 交互。
+ * agentserver 是静态链接的 ARM64 二进制，直接运行在 Termux 环境，不需要 proot/Ubuntu。
+ * 二进制位于 ~/bin/agentserver，由 AutoAgentServerManager 从 APK assets 提取。
  */
 public class AgentServerFragment extends Fragment {
 
-    private static final String PREFS_NAME        = "agentserver_config";
-    private static final String PROOT_USER        = "claude";  // non-root user inside Ubuntu proot
-    private static final String KEY_SERVER_URL    = "server_url";
-    private static final String KEY_SANDBOX_CODE  = "sandbox_code";
-    private static final String KEY_DEVICE_NAME   = "device_name";
-    private static final String KEY_SANDBOX_ID    = "sandbox_id";  // 上次成功连接的沙盒 ID
+    private static final String PREFS_NAME       = "agentserver_config";
+    private static final String KEY_SERVER_URL   = "server_url";
+    private static final String KEY_SANDBOX_CODE = "sandbox_code";
+    private static final String KEY_DEVICE_NAME  = "device_name";
+    private static final String KEY_SANDBOX_ID   = "sandbox_id";
 
-    private TextView  mStatusText;
-    private TextView  mInfoText;
-    private EditText  mUrlEdit;
-    private EditText  mCodeEdit;
-    private EditText  mDeviceNameEdit;
-    private TextView  mLogText;
+    private TextView   mStatusText;
+    private TextView   mInfoText;
+    private EditText   mUrlEdit;
+    private EditText   mCodeEdit;
+    private EditText   mDeviceNameEdit;
+    private TextView   mLogText;
     private ScrollView mLogScroll;
 
-    private Thread mActiveThread;
-    private String mLastSandboxId = "";  // 上次成功连接的沙盒 ID，用于 --resume
-    private boolean mConnected = false;       // 本次 connect 是否成功建立 tunnel
-    private boolean mRetryWithoutResume = false; // 401 后重试（不带 --resume）
+    private Thread  mActiveThread;
+    private String  mLastSandboxId = "";
+    private boolean mConnected          = false;
+    private boolean mRetryWithoutResume = false;
 
     // ─────────────────────────────────────────────────────────────────────────
     // Fragment 生命周期
@@ -59,27 +59,19 @@ public class AgentServerFragment extends Fragment {
                              @Nullable ViewGroup container,
                              @Nullable Bundle savedInstanceState) {
         View v = inflater.inflate(R.layout.fragment_agent_server, container, false);
-
-        mStatusText    = v.findViewById(R.id.agentserver_status_text);
-        mInfoText      = v.findViewById(R.id.agentserver_info);
-        mUrlEdit       = v.findViewById(R.id.agentserver_url);
-        mCodeEdit      = v.findViewById(R.id.agentserver_code);
+        mStatusText     = v.findViewById(R.id.agentserver_status_text);
+        mInfoText       = v.findViewById(R.id.agentserver_info);
+        mUrlEdit        = v.findViewById(R.id.agentserver_url);
+        mCodeEdit       = v.findViewById(R.id.agentserver_code);
         mDeviceNameEdit = v.findViewById(R.id.agentserver_device_name);
-        mLogText       = v.findViewById(R.id.agentserver_log);
-        mLogScroll     = v.findViewById(R.id.agentserver_log_scroll);
-
+        mLogText        = v.findViewById(R.id.agentserver_log);
+        mLogScroll      = v.findViewById(R.id.agentserver_log_scroll);
         v.findViewById(R.id.btn_agentserver_connect)   .setOnClickListener(b -> doConnect());
         v.findViewById(R.id.btn_agentserver_stop)      .setOnClickListener(b -> doStop());
         v.findViewById(R.id.btn_agentserver_refresh)   .setOnClickListener(b -> checkStatus());
         v.findViewById(R.id.btn_agentserver_clear_log) .setOnClickListener(b -> clearLog());
-
         loadPrefs();
         return v;
-    }
-
-    @Override
-    public void onResume() {
-        super.onResume();
     }
 
     @Override
@@ -93,22 +85,20 @@ public class AgentServerFragment extends Fragment {
     // ─────────────────────────────────────────────────────────────────────────
 
     private void checkStatus() {
-        String prefix  = System.getenv("PREFIX");
-        if (prefix == null || prefix.isEmpty()) prefix = "/data/data/com.termux/files/usr";
-        String logFile = prefix + "/../home/agentserver-agent.log";
+        String prefix  = getPrefix();
+        String home    = prefix + "/../home";
+        String asBin   = home + "/bin/agentserver";
+        String logFile = home + "/agentserver-agent.log";
 
         String script =
-            "if ! command -v proot-distro >/dev/null 2>&1; then\n" +
-            "  echo '[!] proot-distro 未找到，Ubuntu 环境尚未初始化'; exit 1\n" +
+            "if [ ! -x '" + asBin + "' ]; then\n" +
+            "  echo '[!] AgentServer 未安装（~/bin/agentserver 不存在）'; exit 1\n" +
             "fi\n" +
-            "if ! proot-distro login --user " + PROOT_USER + " ubuntu -- sh -c 'command -v agentserver >/dev/null 2>&1'; then\n" +
-            "  echo '[!] AgentServer 未安装'; exit 1\n" +
-            "fi\n" +
-            "echo \"版本: $(proot-distro login --user " + PROOT_USER + " ubuntu -- agentserver version 2>/dev/null)\"\n" +
+            "echo \"版本: $('"+asBin+"' version 2>/dev/null)\"\n" +
             "echo ''\n" +
-            "if pgrep -f 'agentserver' >/dev/null 2>&1; then\n" +
+            "if pgrep -f 'agentserver claudecode' >/dev/null 2>&1; then\n" +
             "  echo '[*] Agent 运行中'\n" +
-            "  pgrep -a -f 'agentserver' 2>/dev/null | grep -v grep | head -5\n" +
+            "  pgrep -a -f 'agentserver claudecode' 2>/dev/null | grep -v grep | head -5\n" +
             "else\n" +
             "  echo '[-] Agent 未运行'\n" +
             "fi\n" +
@@ -120,7 +110,7 @@ public class AgentServerFragment extends Fragment {
     }
 
     /**
-     * 在 Termux 层 nohup 整个 proot-distro 进程，使 agentserver 后台持续运行。
+     * 启动 agentserver claudecode，nohup 后台运行。
      * 连接成功后从日志解析 sandbox ID 并持久化，下次用 --resume 复用同一沙盒。
      */
     private void doConnect() {
@@ -135,8 +125,13 @@ public class AgentServerFragment extends Fragment {
         }
         savePrefs();
 
-        // 从 ApiKeyStore 读取激活的 API Key，直接注入 agentserver 进程环境
-        // （proot-distro 不走 login shell，.bashrc 不会自动 source，必须显式传入）
+        String prefix  = getPrefix();
+        String home    = prefix + "/../home";
+        String asBin   = home + "/bin/agentserver";
+        String claudeBin = home + "/bin/claude";
+        String logFile = home + "/agentserver-agent.log";
+
+        // 从 ApiKeyStore 读取激活的 API Key，内联注入环境变量
         ApiKeyStore keyStore = new ApiKeyStore(requireContext());
         String activeId = keyStore.getActiveId();
         String apiKey = "", apiBaseUrl = "";
@@ -152,31 +147,38 @@ public class AgentServerFragment extends Fragment {
                 envPrefix += "ANTHROPIC_BASE_URL='" + apiBaseUrl.replace("'", "'\\''") + "' ";
         }
 
-        String prefix   = System.getenv("PREFIX");
-        if (prefix == null || prefix.isEmpty()) prefix = "/data/data/com.termux/files/usr";
-        String home     = prefix + "/../home";
-        String logFile  = home + "/agentserver-agent.log";
-        String pdBin    = prefix + "/bin/proot-distro";
-        String safeUrl  = url.replace("'", "'\\''");
-        String nameFlag = device.isEmpty() ? "" : " --name '" + device.replace("'", "'\\''") + "'";
-
-        // 优先级：用户手填沙盒 ID > 上次自动保存的 ID > 不传（首次新建）
-        String resumeId = !code.isEmpty() ? code : mLastSandboxId;
+        String safeUrl    = url.replace("'", "'\\''");
+        String nameFlag   = device.isEmpty() ? "" : " --name '" + device.replace("'", "'\\''") + "'";
+        String resumeId   = !code.isEmpty() ? code : mLastSandboxId;
         String resumeFlag = resumeId.isEmpty() ? "" : " --resume '" + resumeId.replace("'", "'\\''") + "'";
 
-        String agentArgs = "claudecode --server '" + safeUrl + "'" + resumeFlag + nameFlag + " --skip-open-browser";
+        String agentArgs  = "claudecode --server '" + safeUrl + "'" +
+                            " --claude-bin '" + claudeBin + "'" +
+                            resumeFlag + nameFlag + " --skip-open-browser";
         final String finalEnvPrefix = envPrefix;
 
         String script =
-            // pgrep 排除当前 bash 自身（$$），避免 pkill -f 因 cmdline 包含 'agentserver claudecode' 把自己杀掉（exit 143）
+            "if [ ! -x '" + asBin + "' ]; then\n" +
+            "  echo '[!] AgentServer 未安装，请重启 App 等待自动安装'; exit 1\n" +
+            "fi\n" +
+            // 停掉已有进程
             "for _p in $(pgrep -f 'agentserver claudecode' 2>/dev/null);" +
             " do [ \"$_p\" != \"$$\" ] && kill \"$_p\" 2>/dev/null; done; sleep 1\n" +
-            "> '" + logFile + "'\n" +          // 清空旧日志，避免历史内容干扰状态检测
+            "> '" + logFile + "'\n" +
+            // Go 静态二进制读 /etc/resolv.conf，Android 上该文件不存在或指向无效 DNS。
+            // 用 proot -b 仅做 resolv.conf 绑定，注入真实 DNS（8.8.8.8 + 1.1.1.1）。
+            "_rc=\"$HOME/.as-resolv.conf\"\n" +
+            "printf 'nameserver 8.8.8.8\\nnameserver 1.1.1.1\\n' > \"$_rc\"\n" +
+            "_proot=$(command -v proot 2>/dev/null)\n" +
             "echo '[*] 正在启动 AgentServer...'\n" +
-            // bash -c 包裹：显式传入 ANTHROPIC_API_KEY（来自 ApiKeyStore）+ 兜底 source .bashrc
-            "nohup '" + pdBin + "' login --user " + PROOT_USER + " ubuntu -- bash -c" +
-            " \". /home/claude/.bashrc 2>/dev/null; " + finalEnvPrefix + "exec agentserver " + agentArgs + "\"" +
+            "if [ -n \"$_proot\" ]; then\n" +
+            "  nohup \"$_proot\" -b \"$_rc:/etc/resolv.conf\" sh -c '" +
+            finalEnvPrefix + "exec '\"'\"'" + asBin + "'\"'\"' " + agentArgs + "'" +
             " >> '" + logFile + "' 2>&1 &\n" +
+            "else\n" +
+            "  nohup sh -c '" + finalEnvPrefix + "exec '\"'\"'" + asBin + "'\"'\"' " + agentArgs + "'" +
+            " >> '" + logFile + "' 2>&1 &\n" +
+            "fi\n" +
             "AS_PID=$!\n" +
             "echo '[*] 等待启动（5 秒）...'\n" +
             "sleep 5\n" +
@@ -190,7 +192,6 @@ public class AgentServerFragment extends Fragment {
             "  echo '[!] Agent 进程已退出'\n" +
             "fi\n";
 
-        // 监听输出：提取沙盒 ID；遇到 session not found 时自动清除旧 ID 避免下次继续失败
         runScript(script, "连接 AgentServer", line -> {
             if (line.contains("Failed to load session") || line.contains("session not found")
                     || line.contains("got 401") || line.contains("status code 101 but got")) {
@@ -213,7 +214,6 @@ public class AgentServerFragment extends Fragment {
                     mLastSandboxId = sandboxId;
                     saveSandboxId(sandboxId);
                     mConnected = true;
-                    // 立即更新状态，不等 25 秒 tail 超时
                     final String sid = sandboxId;
                     post(() -> {
                         setStatus("● 已连接", "#388E3C");
@@ -224,11 +224,11 @@ public class AgentServerFragment extends Fragment {
         });
     }
 
-    /** 停止后台运行的 Agent（在 Termux 层 kill，不进入 proot）。 */
     private void doStop() {
         mConnected = false;
         runScript(
-            "pkill -f 'proot-distro.*login ubuntu' 2>/dev/null && echo '[*] Agent 已断开连接'" +
+            "pkill -f 'agentserver claudecode' 2>/dev/null" +
+            " && echo '[*] Agent 已断开连接'" +
             " || echo '[!] 未找到运行中的 Agent 进程'",
             "断开连接", null
         );
@@ -245,10 +245,8 @@ public class AgentServerFragment extends Fragment {
         setStatus("● 运行中", "#F57C00");
         setInfo("正在执行...");
 
-        String prefix = System.getenv("PREFIX");
-        if (prefix == null || prefix.isEmpty()) prefix = "/data/data/com.termux/files/usr";
-        String bash = prefix + "/bin/bash";
-
+        String prefix = getPrefix();
+        String bash   = prefix + "/bin/bash";
         String sysPath = System.getenv("PATH");
         if (sysPath == null) sysPath = "";
         String termuxPath = prefix + "/bin:" + prefix + "/bin/applets:" + sysPath;
@@ -270,10 +268,7 @@ public class AgentServerFragment extends Fragment {
                     new InputStreamReader(p.getInputStream(), java.nio.charset.StandardCharsets.UTF_8));
                 String line;
                 while ((line = br.readLine()) != null) {
-                    if (Thread.currentThread().isInterrupted()) {
-                        p.destroy();
-                        return;
-                    }
+                    if (Thread.currentThread().isInterrupted()) { p.destroy(); return; }
                     if (lineCallback != null) lineCallback.accept(line);
                     final String l = line;
                     post(() -> appendLog(l + "\n"));
@@ -284,7 +279,6 @@ public class AgentServerFragment extends Fragment {
                     appendLog("─────────────── 完成（exit " + exit + "）\n");
                     updateStatusFromLog(exit);
                 });
-
             } catch (InterruptedException ignored) {
             } catch (Exception e) {
                 post(() -> {
@@ -298,23 +292,18 @@ public class AgentServerFragment extends Fragment {
         mActiveThread.start();
     }
 
-    /** 根据退出码和 mConnected 标志更新状态徽章和摘要文本。 */
     private void updateStatusFromLog(int exitCode) {
         if (exitCode != 0) {
             String log = mLogText.getText().toString();
-            if (log.contains("未安装") || log.contains("not installed") || log.contains("not found")) {
+            if (log.contains("未安装")) {
                 setStatus("● 未安装", "#888888");
                 setInfo("AgentServer 未安装，请重启应用等待自动安装");
-            } else if (log.contains("未就绪") || log.contains("proot-distro 未找到")) {
-                setStatus("● 环境未就绪", "#888888");
-                setInfo("Ubuntu 环境尚未初始化，请先切换到终端 Tab");
             } else {
                 setStatus("● 失败", "#E53935");
                 setInfo("命令执行失败，请查看日志");
             }
             return;
         }
-
         if (mConnected) {
             setStatus("● 已连接", "#388E3C");
             setInfo("AgentServer 已连接到服务器" +
@@ -333,6 +322,11 @@ public class AgentServerFragment extends Fragment {
     // ─────────────────────────────────────────────────────────────────────────
     // UI 辅助
     // ─────────────────────────────────────────────────────────────────────────
+
+    private String getPrefix() {
+        String p = System.getenv("PREFIX");
+        return (p != null && !p.isEmpty()) ? p : "/data/data/com.termux/files/usr";
+    }
 
     private void appendLog(String text) {
         mLogText.append(text);
@@ -353,8 +347,7 @@ public class AgentServerFragment extends Fragment {
     }
 
     private void loadPrefs() {
-        SharedPreferences p = requireContext()
-            .getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
+        SharedPreferences p = requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE);
         mUrlEdit.setText(p.getString(KEY_SERVER_URL, ""));
         mCodeEdit.setText(p.getString(KEY_SANDBOX_CODE, ""));
         mDeviceNameEdit.setText(p.getString(KEY_DEVICE_NAME, ""));
@@ -364,23 +357,19 @@ public class AgentServerFragment extends Fragment {
     private void savePrefs() {
         requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
-            .putString(KEY_SERVER_URL, mUrlEdit.getText().toString().trim())
+            .putString(KEY_SERVER_URL,   mUrlEdit.getText().toString().trim())
             .putString(KEY_SANDBOX_CODE, mCodeEdit.getText().toString().trim())
-            .putString(KEY_DEVICE_NAME, mDeviceNameEdit.getText().toString().trim())
+            .putString(KEY_DEVICE_NAME,  mDeviceNameEdit.getText().toString().trim())
             .apply();
     }
 
     private void saveSandboxId(String sandboxId) {
         requireContext().getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_SANDBOX_ID, sandboxId)
-            .apply();
+            .edit().putString(KEY_SANDBOX_ID, sandboxId).apply();
     }
 
     private void cancelActiveThread() {
-        if (mActiveThread != null && mActiveThread.isAlive()) {
-            mActiveThread.interrupt();
-        }
+        if (mActiveThread != null && mActiveThread.isAlive()) mActiveThread.interrupt();
     }
 
     private void post(Runnable r) {

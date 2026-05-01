@@ -289,10 +289,7 @@ public class HomeFragment extends Fragment {
                         String errLine;
                         while ((errLine = err.readLine()) != null) {
                             String stripped = stripAnsi(errLine).trim();
-                            // 过滤 proot-distro 自身的底层警告（对用户无意义）
-                            if (stripped.startsWith("proot warning:")
-                                    || stripped.startsWith("proot info:")
-                                    || stripped.isEmpty()) {
+                            if (stripped.isEmpty()) {
                                 if (stripped.isEmpty() && block.length() > 0) {
                                     final String msg = block.toString().trim();
                                     block.setLength(0);

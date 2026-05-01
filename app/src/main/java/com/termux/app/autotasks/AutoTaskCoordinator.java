@@ -12,27 +12,25 @@ import com.termux.app.mcp.tools.FileTool;
 public class AutoTaskCoordinator {
 
     private final ApiSelfCheckManager mApiSelfCheckManager;
-    private final AutoUbuntuManager mAutoUbuntuManager;
-    private final ApiHttpBridgeServer mApiHttpBridgeServer;
-    private final McpHttpServer mMcpHttpServer;
+    private final AutoClaudeLauncher   mAutoClaudeLauncher;
+    private final ApiHttpBridgeServer  mApiHttpBridgeServer;
+    private final McpHttpServer        mMcpHttpServer;
     @SuppressWarnings("FieldCanBeLocal")
-    private final AutoClaudeManager mAutoClaudeManager;
+    private final AutoClaudeManager    mAutoClaudeManager;
     @SuppressWarnings("FieldCanBeLocal")
     private final AutoAgentServerManager mAutoAgentServerManager;
     private boolean mEnabled = true;
 
     public AutoTaskCoordinator(@NonNull TermuxActivity activity) {
-        // AutoClaudeManager / AutoAgentServerManager 先初始化：后台写 inner 脚本，
-        // Ubuntu 安装需要几分钟，有充足准备时间
-        mAutoClaudeManager = new AutoClaudeManager(activity);
+        // Start background asset extraction / script writing first
+        mAutoClaudeManager      = new AutoClaudeManager(activity);
         mAutoAgentServerManager = new AutoAgentServerManager(activity);
-        mApiSelfCheckManager = new ApiSelfCheckManager(activity);
-        mAutoUbuntuManager = new AutoUbuntuManager(activity);
-        mAutoUbuntuManager.setAgentServerManager(mAutoAgentServerManager);
-        // 旧 HTTP API 桥（只读，保留向后兼容）
+        mApiSelfCheckManager    = new ApiSelfCheckManager(activity);
+        mAutoClaudeLauncher     = new AutoClaudeLauncher(activity);
+        // Legacy read-only HTTP API bridge (kept for backward compatibility)
         mApiHttpBridgeServer = new ApiHttpBridgeServer(activity);
         mApiHttpBridgeServer.start();
-        // MCP Server：将 Android 原生能力封装为 Claude Code 可调用的 MCP 工具
+        // MCP Server: exposes Android hardware capabilities to Claude Code
         String termuxHome = activity.getFilesDir().getParent() + "/home";
         AuditLogger audit = new AuditLogger(termuxHome);
         mMcpHttpServer = new McpHttpServer(activity, audit);
@@ -42,22 +40,16 @@ public class AutoTaskCoordinator {
         mMcpHttpServer.registerTool(new FileTool(FileTool.Kind.LIST));
         mMcpHttpServer.registerTool(new FileTool(FileTool.Kind.READ));
         mMcpHttpServer.start();
-        // 后台生成 capabilities.json，供 Ubuntu 里的 Claude Code 读取设备能力快照
         new CapabilitiesManager(activity).generateAsync();
     }
 
     public void setEnabled(boolean enabled) {
         mEnabled = enabled;
         mApiSelfCheckManager.setEnabled(enabled);
-        mAutoUbuntuManager.setEnabled(enabled);
     }
 
     public void setApiSelfCheckEnabled(boolean enabled) {
         mApiSelfCheckManager.setEnabled(enabled);
-    }
-
-    public void setAutoUbuntuEnabled(boolean enabled) {
-        mAutoUbuntuManager.setEnabled(enabled);
     }
 
     public void init() {
@@ -72,13 +64,13 @@ public class AutoTaskCoordinator {
 
     public void onResume() {
         if (!mEnabled) return;
-        mAutoUbuntuManager.maybeAutoLaunchUbuntu();
+        mAutoClaudeLauncher.maybeAutoLaunchSetup();
     }
 
     public void onSessionReady() {
         if (!mEnabled) return;
         mApiSelfCheckManager.tryPrintPending();
-        mAutoUbuntuManager.maybeAutoLaunchUbuntu();
+        mAutoClaudeLauncher.maybeAutoLaunchSetup();
     }
 
     public void onDestroy() {

@@ -20,7 +20,7 @@ import java.io.InputStream;
  *   4. Create ~/bin/claude wrapper (no LD_LIBRARY_PATH needed; musl is self-contained)
  *   5. Configure API key and register MCP server
  *
- * Ubuntu rootfs is NOT required for Claude. It is still installed separately for AgentServer.
+ * Ubuntu rootfs is NOT required. Both Claude and agentserver run natively in Termux.
  */
 public class AutoClaudeManager {
 
