@@ -8,19 +8,19 @@ public final class LoomConfigRenderer {
     public static String renderObserverConfig(LoomSettings s, String observerHome) {
         String dbPath = joinPath(observerHome, "observer.db");
         return ""
-            + "listen_addr: " + s.observerListenAddr + "\n"
-            + "db_path: " + dbPath + "\n"
+            + "listen_addr: " + q(s.observerListenAddr) + "\n"
+            + "db_path: " + q(dbPath) + "\n"
             + "api_keys:\n"
             + "  - id: bootstrap\n"
-            + "    key: " + LoomSettings.yamlQuote(s.workspaceApiKey) + "\n"
+            + "    key: " + q(s.workspaceApiKey) + "\n"
             + "    note: Android app bootstrap key\n";
     }
 
     public static String renderDriverConfig(LoomSettings s, String projectDir, String tokenDir) {
         return ""
             + "server:\n"
-            + "  url: " + s.agentServerUrl + "\n"
-            + "  name: " + s.driverName + "\n"
+            + "  url: " + q(s.agentServerUrl) + "\n"
+            + "  name: " + q(s.driverName) + "\n"
             + "credentials:\n"
             + "  sandbox_id: \"\"\n"
             + "  tunnel_token: \"\"\n"
@@ -29,14 +29,14 @@ public final class LoomConfigRenderer {
             + "  short_id: \"\"\n"
             + "listen_addr: 127.0.0.1:0\n"
             + "discovery:\n"
-            + "  display_name: " + s.driverName + "\n"
-            + "  description: Android Loom driver (" + s.driverName + ")\n"
+            + "  display_name: " + q(s.driverName) + "\n"
+            + "  description: " + q("Android Loom driver (" + s.driverName + ")") + "\n"
             + "  skills: []\n"
             + "agent:\n"
             + "  kind: claude\n"
             + "claude:\n"
             + "  bin: claude\n"
-            + "  workdir: " + projectDir + "\n"
+            + "  workdir: " + q(projectDir) + "\n"
             + "  extra_args: []\n"
             + "planner:\n"
             + "  bin: \"\"\n"
@@ -52,17 +52,17 @@ public final class LoomConfigRenderer {
             + "driver_defaults:\n"
             + "  target_display_name: \"\"\n"
             + "  task_timeout_sec: 600\n"
-            + "  audit_log_dir: " + joinPath(projectDir, "logs") + "\n"
+            + "  audit_log_dir: " + q(joinPath(projectDir, "logs")) + "\n"
             + "  disable_uid_check: true\n"
             + "  max_dir_cache_entries: 50000\n"
             + "  artifact_transport: observer_lazy\n"
             + "observer:\n"
             + "  enabled: true\n"
-            + "  url: " + s.observerUrl + "\n"
-            + "  workspace_id: " + s.workspaceId + "\n"
-            + "  agent_id: " + s.driverName + "\n"
-            + "  api_key: " + LoomSettings.yamlQuote(s.workspaceApiKey) + "\n"
-            + "  token_state_path: " + joinPath(tokenDir, "observer.token") + "\n";
+            + "  url: " + q(s.observerUrl) + "\n"
+            + "  workspace_id: " + q(s.workspaceId) + "\n"
+            + "  agent_id: " + q(s.driverName) + "\n"
+            + "  api_key: " + q(s.workspaceApiKey) + "\n"
+            + "  token_state_path: " + q(joinPath(tokenDir, "observer.token")) + "\n";
     }
 
     public static String renderSlaveConfig(
@@ -73,8 +73,8 @@ public final class LoomConfigRenderer {
         int memoryGb) {
         StringBuilder yaml = new StringBuilder();
         yaml.append("server:\n");
-        yaml.append("  url: ").append(s.agentServerUrl).append("\n");
-        yaml.append("  name: ").append(s.slaveName).append("\n");
+        yaml.append("  url: ").append(q(s.agentServerUrl)).append("\n");
+        yaml.append("  name: ").append(q(s.slaveName)).append("\n");
         yaml.append("credentials:\n");
         yaml.append("  sandbox_id: \"\"\n");
         yaml.append("  tunnel_token: \"\"\n");
@@ -84,12 +84,12 @@ public final class LoomConfigRenderer {
         yaml.append("  kind: claude\n");
         yaml.append("claude:\n");
         yaml.append("  bin: claude\n");
-        yaml.append("  workdir: ").append(slaveHome).append("\n");
+        yaml.append("  workdir: ").append(q(slaveHome)).append("\n");
         yaml.append("  extra_args: []\n");
         yaml.append("mcp_servers: {}\n");
         yaml.append("discovery:\n");
-        yaml.append("  display_name: ").append(s.slaveName).append("\n");
-        yaml.append("  description: Android Loom slave (").append(s.slaveName).append(")\n");
+        yaml.append("  display_name: ").append(q(s.slaveName)).append("\n");
+        yaml.append("  description: ").append(q("Android Loom slave (" + s.slaveName + ")")).append("\n");
         yaml.append("  skills:\n");
         yaml.append("    - chat\n");
         yaml.append("    - bash\n");
@@ -107,17 +107,17 @@ public final class LoomConfigRenderer {
         yaml.append("resources:\n");
         yaml.append("  cpu:\n");
         yaml.append("    cores: ").append(cpuCores).append("\n");
-        yaml.append("    arch: ").append(arch).append("\n");
+        yaml.append("    arch: ").append(q(arch)).append("\n");
         yaml.append("  memory_gb: ").append(memoryGb).append("\n");
         yaml.append("  tags:\n");
         appendTags(yaml, s.tags, "    ");
         yaml.append("observer:\n");
         yaml.append("  enabled: true\n");
-        yaml.append("  url: ").append(s.observerUrl).append("\n");
-        yaml.append("  workspace_id: ").append(s.workspaceId).append("\n");
-        yaml.append("  agent_id: ").append(s.slaveName).append("\n");
-        yaml.append("  api_key: ").append(LoomSettings.yamlQuote(s.workspaceApiKey)).append("\n");
-        yaml.append("  token_state_path: ").append(joinPath(slaveHome, "observer.token")).append("\n");
+        yaml.append("  url: ").append(q(s.observerUrl)).append("\n");
+        yaml.append("  workspace_id: ").append(q(s.workspaceId)).append("\n");
+        yaml.append("  agent_id: ").append(q(s.slaveName)).append("\n");
+        yaml.append("  api_key: ").append(q(s.workspaceApiKey)).append("\n");
+        yaml.append("  token_state_path: ").append(q(joinPath(slaveHome, "observer.token"))).append("\n");
         return yaml.toString();
     }
 
@@ -128,13 +128,17 @@ public final class LoomConfigRenderer {
         for (String part : parts) {
             String tag = part.trim();
             if (!tag.isEmpty()) {
-                yaml.append(indent).append("- ").append(tag).append("\n");
+                yaml.append(indent).append("- ").append(q(tag)).append("\n");
                 appended = true;
             }
         }
         if (!appended) {
-            yaml.append(indent).append("- android\n");
+            yaml.append(indent).append("- ").append(q("android")).append("\n");
         }
+    }
+
+    private static String q(String value) {
+        return LoomSettings.yamlQuote(value);
     }
 
     private static String joinPath(String dir, String file) {
