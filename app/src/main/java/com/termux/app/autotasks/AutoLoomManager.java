@@ -124,9 +124,10 @@ public class AutoLoomManager {
                 "  install_bin \"$_t/loom/bin/slave-agent\" /usr/local/bin/slave-agent || true\n" +
                 "  install_bin \"$_t/loom/bin/mcp-userspace\" /usr/local/bin/mcp-userspace || true\n" +
                 "  id claude >/dev/null 2>&1 || useradd -m -s /bin/bash claude\n" +
-                "  mkdir -p /home/claude/loom-driver\n" +
+                "  mkdir -p /home/claude/.loom/observer-local /home/claude/.loom/slave-local /home/claude/.loom/driver-local /home/claude/loom-driver\n" +
                 "  [ -f /usr/local/bin/driver-agent ] && cp /usr/local/bin/driver-agent /home/claude/loom-driver/driver-agent && chmod +x /home/claude/loom-driver/driver-agent\n" +
-                "  chown -R claude:claude /home/claude/loom-driver 2>/dev/null || true\n" +
+                "  [ -d \"$_t/loom/skills\" ] && mkdir -p /home/claude/loom-driver/.claude/skills && cp -a \"$_t/loom/skills\"/. /home/claude/loom-driver/.claude/skills/ 2>/dev/null || true\n" +
+                "  chown -R claude:claude /home/claude/.loom /home/claude/loom-driver 2>/dev/null || true\n" +
                 "  rm -rf \"$_t\"\n" +
                 "INNER\n";
 
@@ -155,7 +156,7 @@ public class AutoLoomManager {
         } catch (IOException ignored) {}
     }
 
-    static String buildInnerScriptForTest(boolean localTgzAvailable) {
+    public static String buildInnerScriptForTest(boolean localTgzAvailable) {
         return buildInnerScript(localTgzAvailable);
     }
 
@@ -176,11 +177,34 @@ public class AutoLoomManager {
         s.append("    rm -f ~/.loom-setup.sh\n");
         s.append("}\n\n");
 
+        s.append("if command -v observer-server >/dev/null 2>&1 && command -v driver-agent >/dev/null 2>&1 && command -v slave-agent >/dev/null 2>&1 && [ ! -f \"$_tgz\" ]; then\n");
+        s.append("    cleanup_hook\n");
+        s.append("    return 0 2>/dev/null || exit 0\n");
+        s.append("fi\n\n");
+
         s.append("install_bin() {\n");
         s.append("    _src=\"$1\"\n");
         s.append("    _dst=\"$2\"\n");
         s.append("    [ -f \"$_src\" ] || return 1\n");
         s.append("    mkdir -p \"$(dirname \"$_dst\")\"\n");
+        s.append("    if [ \"$_dst\" = \"/usr/local/bin/observer-server\" ]; then\n");
+        s.append("        cp \"$_src\" /usr/local/bin/observer-server.new\n");
+        s.append("        chmod +x /usr/local/bin/observer-server.new\n");
+        s.append("        mv -f /usr/local/bin/observer-server.new /usr/local/bin/observer-server\n");
+        s.append("        return $?\n");
+        s.append("    fi\n");
+        s.append("    if [ \"$_dst\" = \"/usr/local/bin/driver-agent\" ]; then\n");
+        s.append("        cp \"$_src\" /usr/local/bin/driver-agent.new\n");
+        s.append("        chmod +x /usr/local/bin/driver-agent.new\n");
+        s.append("        mv -f /usr/local/bin/driver-agent.new /usr/local/bin/driver-agent\n");
+        s.append("        return $?\n");
+        s.append("    fi\n");
+        s.append("    if [ \"$_dst\" = \"/usr/local/bin/slave-agent\" ]; then\n");
+        s.append("        cp \"$_src\" /usr/local/bin/slave-agent.new\n");
+        s.append("        chmod +x /usr/local/bin/slave-agent.new\n");
+        s.append("        mv -f /usr/local/bin/slave-agent.new /usr/local/bin/slave-agent\n");
+        s.append("        return $?\n");
+        s.append("    fi\n");
         s.append("    cp \"$_src\" \"$_dst.new\"\n");
         s.append("    chmod +x \"$_dst.new\"\n");
         s.append("    mv -f \"$_dst.new\" \"$_dst\"\n");
@@ -209,6 +233,33 @@ public class AutoLoomManager {
         s.append("    mv -f \"$_part\" \"$_out\"\n");
         s.append("}\n\n");
 
+        s.append("verify_asset() {\n");
+        s.append("    _name=\"$1\"\n");
+        s.append("    _path=\"$2\"\n");
+        s.append("    [ -s /tmp/sha256sums.txt ] || return 0\n");
+        s.append("    command -v sha256sum >/dev/null 2>&1 || { echo '[!] sha256sum unavailable; skipping checksum verification.'; return 0; }\n");
+        s.append("    _expected=$(awk -v n=\"$_name\" '{ name=$2; sub(/^\\*/, \"\", name); if (name == n) { print $1; exit }}' /tmp/sha256sums.txt)\n");
+        s.append("    [ -n \"$_expected\" ] || { echo \"[*] No sha256 entry for $_name; skipping.\"; return 0; }\n");
+        s.append("    _actual=$(sha256sum \"$_path\" | awk '{ print $1 }')\n");
+        s.append("    [ \"$_actual\" = \"$_expected\" ] || { echo \"[!] sha256 mismatch for $_name\"; return 1; }\n");
+        s.append("}\n\n");
+
+        s.append("ensure_required_asset() {\n");
+        s.append("    _asset=\"$1\"\n");
+        s.append("    _path=\"$2\"\n");
+        s.append("    _cmd=\"$3\"\n");
+        s.append("    if dl \"$_asset\" \"$_path\" && verify_asset \"$_asset\" \"$_path\"; then\n");
+        s.append("        return 0\n");
+        s.append("    fi\n");
+        s.append("    rm -f \"$_path\"\n");
+        s.append("    if command -v \"$_cmd\" >/dev/null 2>&1; then\n");
+        s.append("        echo \"[!] Failed to download $_asset; keeping installed $_cmd.\"\n");
+        s.append("        return 0\n");
+        s.append("    fi\n");
+        s.append("    echo \"[!] Failed to download required $_asset and no installed $_cmd was found.\"\n");
+        s.append("    return 1\n");
+        s.append("}\n\n");
+
         s.append("copy_skills_dir() {\n");
         s.append("    _src=\"$1\"\n");
         s.append("    [ -d \"$_src\" ] || return 0\n");
@@ -231,47 +282,74 @@ public class AutoLoomManager {
         s.append("    rm -rf \"$_stmp\"\n");
         s.append("}\n\n");
 
+        s.append("copy_prompts_dir() {\n");
+        s.append("    _src=\"$1\"\n");
+        s.append("    [ -d \"$_src\" ] || return 0\n");
+        s.append("    _agents=$(find \"$_src\" -type f -name AGENTS.md | head -1)\n");
+        s.append("    [ -n \"$_agents\" ] && cp \"$_agents\" /home/claude/loom-driver/AGENTS.md || true\n");
+        s.append("}\n\n");
+
+        s.append("extract_prompts_tgz() {\n");
+        s.append("    _archive=\"$1\"\n");
+        s.append("    [ -s \"$_archive\" ] || return 0\n");
+        s.append("    _ptmp=$(mktemp -d)\n");
+        s.append("    if tar -xzf \"$_archive\" -C \"$_ptmp\" 2>/dev/null; then\n");
+        s.append("        copy_prompts_dir \"$_ptmp\"\n");
+        s.append("    fi\n");
+        s.append("    rm -rf \"$_ptmp\"\n");
+        s.append("}\n\n");
+
         s.append("mkdir -p /usr/local/bin\n");
-        s.append("mkdir -p /home/claude/.loom/observer-local /home/claude/.loom/slave-local /home/claude/.loom/driver-local /home/claude/loom-driver \"$_skills_dst\"\n");
-        s.append("id claude >/dev/null 2>&1 || useradd -m -s /bin/bash claude\n\n");
+        s.append("id claude >/dev/null 2>&1 || useradd -m -s /bin/bash claude\n");
+        s.append("mkdir -p /home/claude/.loom/observer-local /home/claude/.loom/slave-local /home/claude/.loom/driver-local /home/claude/loom-driver \"$_skills_dst\"\n\n");
 
         s.append("_tmpdir=''\n");
+        s.append("_local_ok=0\n");
         s.append("if [ -f \"$_tgz\" ]; then\n");
         s.append("    echo '[*] Installing Loom from local archive...'\n");
         s.append("    _tmpdir=$(mktemp -d)\n");
         s.append("    if ! tar -xzf \"$_tgz\" -C \"$_tmpdir\" 2>&1; then\n");
-        s.append("        echo '[!] Local Loom archive is invalid.'\n");
+        s.append("        echo '[!] Local Loom archive is invalid; falling back to online assets.'\n");
         s.append("        rm -rf \"$_tmpdir\"\n");
         s.append("        rm -f \"$_tgz\"\n");
-        s.append("        cleanup_hook\n");
-        s.append("        return 1 2>/dev/null || exit 1\n");
+        s.append("        _tmpdir=''\n");
+        s.append("    else\n");
+        s.append("        if install_bin \"$_tmpdir/loom/bin/observer-server\" /usr/local/bin/observer-server && ");
+        s.append("install_bin \"$_tmpdir/loom/bin/driver-agent\" /usr/local/bin/driver-agent && ");
+        s.append("install_bin \"$_tmpdir/loom/bin/slave-agent\" /usr/local/bin/slave-agent; then\n");
+        s.append("            install_bin \"$_tmpdir/loom/bin/mcp-userspace\" /usr/local/bin/mcp-userspace || echo '[*] Optional mcp-userspace not present; skipped.'\n");
+        s.append("            cp /usr/local/bin/driver-agent /home/claude/loom-driver/driver-agent\n");
+        s.append("            chmod +x /home/claude/loom-driver/driver-agent\n");
+        s.append("            copy_skills_dir \"$_tmpdir/loom/skills\"\n");
+        s.append("            copy_prompts_dir \"$_tmpdir/loom/prompts-codex\"\n");
+        s.append("            _local_ok=1\n");
+        s.append("        else\n");
+        s.append("            echo '[!] Local Loom archive is missing required binaries; falling back to online assets.'\n");
+        s.append("        fi\n");
         s.append("    fi\n");
-        s.append("    install_bin \"$_tmpdir/loom/bin/observer-server\" /usr/local/bin/observer-server || { echo '[!] observer-server missing from Loom archive.'; rm -rf \"$_tmpdir\"; cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    install_bin \"$_tmpdir/loom/bin/driver-agent\" /usr/local/bin/driver-agent || { echo '[!] driver-agent missing from Loom archive.'; rm -rf \"$_tmpdir\"; cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    install_bin \"$_tmpdir/loom/bin/slave-agent\" /usr/local/bin/slave-agent || { echo '[!] slave-agent missing from Loom archive.'; rm -rf \"$_tmpdir\"; cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    install_bin \"$_tmpdir/loom/bin/mcp-userspace\" /usr/local/bin/mcp-userspace || true\n");
-        s.append("    cp /usr/local/bin/driver-agent /home/claude/loom-driver/driver-agent\n");
-        s.append("    chmod +x /home/claude/loom-driver/driver-agent\n");
-        s.append("    copy_skills_dir \"$_tmpdir/loom/skills\"\n");
-        s.append("else\n");
+        s.append("fi\n");
+        s.append("if [ \"$_local_ok\" != \"1\" ]; then\n");
         s.append("    echo '[*] Local Loom archive not found; downloading release assets...'\n");
-        s.append("    dl observer-server.linux-arm64 /tmp/observer-server.linux-arm64 || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    dl driver-agent.linux-arm64 /tmp/driver-agent.linux-arm64 || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    dl slave-agent.linux-arm64 /tmp/slave-agent.linux-arm64 || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    dl sha256sums.txt /tmp/sha256sums.txt || true\n");
+        s.append("    ensure_required_asset observer-server.linux-arm64 /tmp/observer-server.linux-arm64 observer-server || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    ensure_required_asset driver-agent.linux-arm64 /tmp/driver-agent.linux-arm64 driver-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    ensure_required_asset slave-agent.linux-arm64 /tmp/slave-agent.linux-arm64 slave-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
         s.append("    dl driver-skills.tar.gz /tmp/driver-skills.tar.gz || true\n");
         s.append("    dl driver-codex-prompts.tar.gz /tmp/driver-codex-prompts.tar.gz || true\n");
-        s.append("    dl sha256sums.txt /tmp/sha256sums.txt || true\n");
-        s.append("    install_bin /tmp/observer-server.linux-arm64 /usr/local/bin/observer-server\n");
-        s.append("    install_bin /tmp/driver-agent.linux-arm64 /usr/local/bin/driver-agent\n");
-        s.append("    install_bin /tmp/slave-agent.linux-arm64 /usr/local/bin/slave-agent\n");
+        s.append("    dl mcp-userspace.linux-arm64 /tmp/mcp-userspace.linux-arm64 || echo '[*] Optional mcp-userspace release asset not available; skipped.'\n");
+        s.append("    [ -f /tmp/observer-server.linux-arm64 ] && install_bin /tmp/observer-server.linux-arm64 /usr/local/bin/observer-server\n");
+        s.append("    [ -f /tmp/driver-agent.linux-arm64 ] && install_bin /tmp/driver-agent.linux-arm64 /usr/local/bin/driver-agent\n");
+        s.append("    [ -f /tmp/slave-agent.linux-arm64 ] && install_bin /tmp/slave-agent.linux-arm64 /usr/local/bin/slave-agent\n");
+        s.append("    [ -f /tmp/mcp-userspace.linux-arm64 ] && verify_asset mcp-userspace.linux-arm64 /tmp/mcp-userspace.linux-arm64 && install_bin /tmp/mcp-userspace.linux-arm64 /usr/local/bin/mcp-userspace || true\n");
         s.append("    cp /usr/local/bin/driver-agent /home/claude/loom-driver/driver-agent\n");
         s.append("    chmod +x /home/claude/loom-driver/driver-agent\n");
         s.append("    extract_skills_tgz /tmp/driver-skills.tar.gz\n");
+        s.append("    extract_prompts_tgz /tmp/driver-codex-prompts.tar.gz\n");
         s.append("fi\n\n");
 
         s.append("chown -R claude:claude /home/claude/.loom /home/claude/loom-driver\n");
         s.append("[ -n \"$_tmpdir\" ] && rm -rf \"$_tmpdir\"\n");
-        s.append("rm -f \"$_tgz\" /tmp/observer-server.linux-arm64 /tmp/driver-agent.linux-arm64 /tmp/slave-agent.linux-arm64\n");
+        s.append("rm -f \"$_tgz\" /tmp/observer-server.linux-arm64 /tmp/driver-agent.linux-arm64 /tmp/slave-agent.linux-arm64 /tmp/mcp-userspace.linux-arm64 /tmp/driver-skills.tar.gz /tmp/driver-codex-prompts.tar.gz /tmp/sha256sums.txt\n");
         s.append("cleanup_hook\n");
         s.append("echo '[*] Loom setup complete.'\n");
 

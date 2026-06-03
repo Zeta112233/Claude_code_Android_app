@@ -28,6 +28,26 @@ public class AutoLoomManagerScriptTest {
         assertTrue(script.contains(".part"));
         assertTrue(script.contains("driver-skills.tar.gz"));
         assertTrue(script.contains("sha256sums.txt"));
+        assertTrue(script.contains("verify_asset()"));
+        assertTrue(script.contains("sha256sum"));
+    }
+
+    @Test
+    public void innerScriptFallsBackWhenLocalArchiveIsInvalid() {
+        String script = AutoLoomManager.buildInnerScriptForTest(true);
+
+        assertTrue(script.contains("Local Loom archive is invalid; falling back to online assets."));
+        assertTrue(script.contains("_local_ok=0"));
+        assertTrue(script.contains("if [ \"$_local_ok\" != \"1\" ]; then"));
+    }
+
+    @Test
+    public void innerScriptKeepsInstalledBinaryWhenRequiredDownloadFails() {
+        String script = AutoLoomManager.buildInnerScriptForTest(false);
+
+        assertTrue(script.contains("ensure_required_asset()"));
+        assertTrue(script.contains("command -v \"$_cmd\""));
+        assertTrue(script.contains("keeping installed $_cmd"));
     }
 
     @Test
