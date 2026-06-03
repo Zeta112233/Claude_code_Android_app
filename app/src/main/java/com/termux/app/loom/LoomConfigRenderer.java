@@ -18,25 +18,46 @@ public final class LoomConfigRenderer {
 
     public static String renderDriverConfig(LoomSettings s, String projectDir, String tokenDir) {
         return ""
-            + "agentserver:\n"
+            + "server:\n"
             + "  url: " + s.agentServerUrl + "\n"
             + "  name: " + s.driverName + "\n"
             + "credentials:\n"
-            + "  username: \"\"\n"
-            + "  password: \"\"\n"
+            + "  sandbox_id: \"\"\n"
+            + "  tunnel_token: \"\"\n"
+            + "  proxy_token: \"\"\n"
+            + "  workspace_id: \"\"\n"
+            + "  short_id: \"\"\n"
+            + "listen_addr: 127.0.0.1:0\n"
             + "discovery:\n"
-            + "  enabled: true\n"
+            + "  display_name: " + s.driverName + "\n"
+            + "  description: Loom Android driver\n"
+            + "  skills:\n"
+            + "    - chat\n"
+            + "    - bash\n"
+            + "    - file\n"
+            + "    - register_mcp\n"
             + "agent:\n"
             + "  kind: claude\n"
             + "claude:\n"
             + "  bin: claude\n"
             + "  workdir: " + projectDir + "\n"
+            + "  extra_args: []\n"
             + "planner:\n"
-            + "  enabled: true\n"
+            + "  bin: loom-planner\n"
+            + "  timeout_sec: 300\n"
+            + "  extra_args: []\n"
             + "fanout:\n"
-            + "  enabled: true\n"
+            + "  max_concurrency: 4\n"
+            + "  default_policy: local\n"
+            + "  policy_by_skill: {}\n"
+            + "  subtask_defaults: {}\n"
             + "driver_defaults:\n"
+            + "  target_display_name: " + s.slaveName + "\n"
+            + "  task_timeout_sec: 300\n"
             + "  audit_log_dir: " + joinPath(projectDir, "logs") + "\n"
+            + "  disable_uid_check: true\n"
+            + "  max_dir_cache_entries: 256\n"
+            + "  artifact_transport: observer\n"
             + "observer:\n"
             + "  enabled: true\n"
             + "  url: " + s.observerUrl + "\n"
@@ -53,18 +74,24 @@ public final class LoomConfigRenderer {
         String arch,
         int memoryGb) {
         StringBuilder yaml = new StringBuilder();
-        yaml.append("agentserver:\n");
+        yaml.append("server:\n");
         yaml.append("  url: ").append(s.agentServerUrl).append("\n");
         yaml.append("  name: ").append(s.slaveName).append("\n");
         yaml.append("credentials:\n");
-        yaml.append("  username: \"\"\n");
-        yaml.append("  password: \"\"\n");
+        yaml.append("  sandbox_id: \"\"\n");
+        yaml.append("  tunnel_token: \"\"\n");
+        yaml.append("  proxy_token: \"\"\n");
+        yaml.append("  short_id: \"\"\n");
         yaml.append("agent:\n");
         yaml.append("  kind: claude\n");
         yaml.append("claude:\n");
+        yaml.append("  bin: claude\n");
         yaml.append("  workdir: ").append(slaveHome).append("\n");
-        yaml.append("mcp_servers: []\n");
+        yaml.append("  extra_args: []\n");
+        yaml.append("mcp_servers: {}\n");
         yaml.append("discovery:\n");
+        yaml.append("  display_name: ").append(s.slaveName).append("\n");
+        yaml.append("  description: Loom Android slave\n");
         yaml.append("  skills:\n");
         yaml.append("    - chat\n");
         yaml.append("    - bash\n");
@@ -72,16 +99,20 @@ public final class LoomConfigRenderer {
         yaml.append("    - register_mcp\n");
         yaml.append("    - file\n");
         yaml.append("planner:\n");
-        yaml.append("  enabled: true\n");
+        yaml.append("  bin: loom-planner\n");
+        yaml.append("  timeout_sec: 300\n");
+        yaml.append("  extra_args: []\n");
         yaml.append("fanout:\n");
-        yaml.append("  enabled: true\n");
+        yaml.append("  max_concurrency: 4\n");
+        yaml.append("  default_policy: local\n");
+        yaml.append("  policy_by_skill: {}\n");
         yaml.append("resources:\n");
         yaml.append("  cpu:\n");
         yaml.append("    cores: ").append(cpuCores).append("\n");
         yaml.append("    arch: ").append(arch).append("\n");
         yaml.append("  memory_gb: ").append(memoryGb).append("\n");
-        yaml.append("tags:\n");
-        appendTags(yaml, s.tags);
+        yaml.append("  tags:\n");
+        appendTags(yaml, s.tags, "    ");
         yaml.append("observer:\n");
         yaml.append("  enabled: true\n");
         yaml.append("  url: ").append(s.observerUrl).append("\n");
@@ -92,19 +123,19 @@ public final class LoomConfigRenderer {
         return yaml.toString();
     }
 
-    private static void appendTags(StringBuilder yaml, String tags) {
+    private static void appendTags(StringBuilder yaml, String tags, String indent) {
         String tagString = tags == null || tags.trim().isEmpty() ? "android" : tags;
         String[] parts = tagString.split(",");
         boolean appended = false;
         for (String part : parts) {
             String tag = part.trim();
             if (!tag.isEmpty()) {
-                yaml.append("  - ").append(tag).append("\n");
+                yaml.append(indent).append("- ").append(tag).append("\n");
                 appended = true;
             }
         }
         if (!appended) {
-            yaml.append("  - android\n");
+            yaml.append(indent).append("- android\n");
         }
     }
 
