@@ -76,6 +76,40 @@ public final class LoomCommandBuilder {
             + proot(command) + " 2>&1 | tee -a \"$HOME/loom-driver-register.log\"\n";
     }
 
+    public static String setupConfigScript(LoomSettings settings) {
+        String observer = b64(LoomConfigRenderer.renderObserverConfig(settings, OBSERVER_HOME));
+        String driver = b64(LoomConfigRenderer.renderDriverConfig(settings, DRIVER_PROJECT, DRIVER_HOME));
+        String slave = b64(LoomConfigRenderer.renderSlaveConfig(settings, SLAVE_HOME, 1, "aarch64", 1));
+        String mcpJson = b64(driverMcpJson());
+        String command = ""
+            + "mkdir -p " + OBSERVER_HOME + " " + DRIVER_HOME + " " + SLAVE_HOME + " "
+                + DRIVER_PROJECT + "/logs " + DRIVER_PROJECT + "/.claude/skills\n"
+            + "printf '%s' '" + observer + "' | base64 -d > " + OBSERVER_CONFIG + "\n"
+            + "printf '%s' '" + driver + "' | base64 -d > " + DRIVER_PROJECT + "/config.yaml\n"
+            + "printf '%s' '" + slave + "' | base64 -d > " + SLAVE_CONFIG + "\n"
+            + "printf '%s' '" + mcpJson + "' | base64 -d > " + DRIVER_PROJECT + "/.mcp.json\n"
+            + "cp /usr/local/bin/driver-agent " + DRIVER_PROJECT + "/driver-agent\n"
+            + "chmod +x " + DRIVER_PROJECT + "/driver-agent\n"
+            + "chmod 600 " + OBSERVER_CONFIG + " " + DRIVER_PROJECT + "/config.yaml " + SLAVE_CONFIG + "\n"
+            + "echo '[*] Loom configs written'\n"
+            + "echo '[*] Driver project is ready at " + DRIVER_PROJECT + "'";
+
+        return header()
+            + "command -v proot-distro\n"
+            + proot(command) + "\n";
+    }
+
+    public static String startAllInOneScript(String prefix, LoomSettings settings) {
+        return setupConfigScript(settings)
+            + "\n"
+            + startObserverScript(prefix)
+            + "\n"
+            + startSlaveScript(prefix)
+            + "\n"
+            + "echo '[*] Driver project is ready at " + DRIVER_PROJECT + "'\n"
+            + "echo '[*] Run driver registration from Loom page if config.yaml has empty credentials.'\n";
+    }
+
     public static String startSlaveScript(String prefix) {
         String slaveLog = logPath(prefix, "loom-slave.log");
         String command = ""
@@ -86,6 +120,7 @@ public final class LoomCommandBuilder {
 
         return header()
             + "command -v proot-distro\n"
+            + readableCommand("nohup slave-agent config.yaml")
             + nohupProot(command, slaveLog) + "\n";
     }
 
@@ -143,6 +178,22 @@ public final class LoomCommandBuilder {
 
     private static String readableCommand(String command) {
         return "# " + command + "\n";
+    }
+
+    private static String driverMcpJson() {
+        return "{\n"
+            + "  \"mcpServers\": {\n"
+            + "    \"loom-driver\": {\n"
+            + "      \"command\": \"" + DRIVER_PROJECT + "/driver-agent\",\n"
+            + "      \"args\": [\"serve-mcp\", \"--config\", \"" + DRIVER_PROJECT + "/config.yaml\"]\n"
+            + "    }\n"
+            + "  }\n"
+            + "}\n";
+    }
+
+    private static String b64(String value) {
+        return java.util.Base64.getEncoder().encodeToString(
+            value.getBytes(java.nio.charset.StandardCharsets.UTF_8));
     }
 
     private static String shellQuote(String value) {

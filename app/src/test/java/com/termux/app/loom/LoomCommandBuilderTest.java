@@ -84,6 +84,28 @@ public class LoomCommandBuilderTest {
     }
 
     @Test
+    public void setupConfigWritesAllRoleConfigsAndDriverMcpFile() {
+        String script = LoomCommandBuilder.setupConfigScript(LoomSettings.defaults());
+
+        Assert.assertTrue(script.contains("/home/claude/.loom/observer-local/observer.yaml"));
+        Assert.assertTrue(script.contains("/home/claude/loom-driver/config.yaml"));
+        Assert.assertTrue(script.contains("/home/claude/.loom/slave-local/config.yaml"));
+        Assert.assertTrue(script.contains("/home/claude/loom-driver/.mcp.json"));
+        Assert.assertTrue(script.contains("base64 -d"));
+        Assert.assertTrue(script.contains("chmod 600"));
+    }
+
+    @Test
+    public void allInOneStartsObserverAndSlave() {
+        String script = LoomCommandBuilder.startAllInOneScript(
+            "/data/data/com.termux/files/usr", LoomSettings.defaults());
+
+        Assert.assertTrue(script.contains("observer-server --config observer.yaml"));
+        Assert.assertTrue(script.contains("slave-agent config.yaml"));
+        Assert.assertTrue(script.contains("Driver project is ready"));
+    }
+
+    @Test
     public void startScriptsNohupOuterProotCommand() {
         Assert.assertTrue(LoomCommandBuilder.startObserverScript("/data/data/com.termux/files/usr")
             .contains("nohup proot-distro login --user claude ubuntu"));

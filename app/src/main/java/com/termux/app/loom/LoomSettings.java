@@ -68,6 +68,11 @@ public final class LoomSettings {
             observerName, driverName, slaveName, tags);
     }
 
+    public LoomSettings withRoleMode(String roleMode) {
+        return copy(roleMode, observerUrl, observerListenAddr, workspaceId, workspaceApiKey, agentServerUrl,
+            observerName, driverName, slaveName, tags);
+    }
+
     public LoomSettings withObserverListenAddr(String observerListenAddr) {
         return copy(roleMode, observerUrl, observerListenAddr, workspaceId, workspaceApiKey, agentServerUrl,
             observerName, driverName, slaveName, tags);
@@ -84,6 +89,11 @@ public final class LoomSettings {
     }
 
     public LoomSettings withAgentServerUrl(String agentServerUrl) {
+        return copy(roleMode, observerUrl, observerListenAddr, workspaceId, workspaceApiKey, agentServerUrl,
+            observerName, driverName, slaveName, tags);
+    }
+
+    public LoomSettings withObserverName(String observerName) {
         return copy(roleMode, observerUrl, observerListenAddr, workspaceId, workspaceApiKey, agentServerUrl,
             observerName, driverName, slaveName, tags);
     }
