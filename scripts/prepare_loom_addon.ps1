@@ -79,6 +79,73 @@ function Invoke-Download {
     }
 }
 
+function Get-Sha256Hex {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    return (Get-FileHash -Algorithm SHA256 -LiteralPath $Path).Hash.ToLowerInvariant()
+}
+
+function Read-Sha256Sums {
+    param([Parameter(Mandatory = $true)][string]$Path)
+
+    $map = @{}
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return $map
+    }
+
+    foreach ($line in Get-Content -LiteralPath $Path) {
+        $trimmed = $line.Trim()
+        if ($trimmed -eq "" -or $trimmed.StartsWith("#")) {
+            continue
+        }
+        $parts = $trimmed -split "\s+", 2
+        if ($parts.Count -lt 2) {
+            continue
+        }
+        $hash = $parts[0].ToLowerInvariant()
+        $name = $parts[1].TrimStart("*")
+        $map[$name] = $hash
+    }
+    return $map
+}
+
+function Assert-ExpectedSha256 {
+    param(
+        [Parameter(Mandatory = $true)][hashtable]$Checksums,
+        [Parameter(Mandatory = $true)][string]$AssetName,
+        [Parameter(Mandatory = $true)][string]$Path
+    )
+
+    if (-not $Checksums.ContainsKey($AssetName)) {
+        Write-Host "No sha256 entry for $AssetName; skipping checksum verification"
+        return
+    }
+
+    $expected = $Checksums[$AssetName]
+    $actual = Get-Sha256Hex -Path $Path
+    if ($actual -ne $expected) {
+        throw "Checksum mismatch for $AssetName. Expected $expected, got $actual"
+    }
+    Write-Host "Verified $AssetName sha256"
+}
+
+function Assert-SafeTarEntries {
+    param([Parameter(Mandatory = $true)][string]$TarPath)
+
+    $entries = tar -tzf $TarPath
+    if ($LASTEXITCODE -ne 0) {
+        throw "Failed to list $TarPath"
+    }
+    foreach ($entry in $entries) {
+        $normalized = $entry.Replace("\", "/")
+        if ($normalized.StartsWith("/") -or $normalized -match "^[A-Za-z]:/" -or
+                $normalized -eq ".." -or $normalized.StartsWith("../") -or
+                $normalized.Contains("/../")) {
+            throw "Unsafe tar entry in $TarPath`: $entry"
+        }
+    }
+}
+
 function Copy-DownloadedAsset {
     param(
         [Parameter(Mandatory = $true)][string]$Source,
@@ -90,10 +157,12 @@ function Copy-DownloadedAsset {
 
 $repoRoot = [System.IO.Path]::GetFullPath((Join-Path $PSScriptRoot ".."))
 $buildRoot = Join-Path $repoRoot "build"
+$assetsRoot = Join-Path $repoRoot "app/src/main/assets"
 $resolvedWorkDir = Resolve-RepoPath $WorkDir
 $resolvedOutFile = Resolve-RepoPath $OutFile
 
 Assert-UnderPath -Path $resolvedWorkDir -Parent $buildRoot -Description "WorkDir"
+Assert-UnderPath -Path $resolvedOutFile -Parent $assetsRoot -Description "OutFile"
 
 if (Test-Path -LiteralPath $resolvedWorkDir) {
     Remove-Item -LiteralPath $resolvedWorkDir -Recurse -Force
@@ -119,11 +188,20 @@ $requiredAssets = @(
 
 $optionalEntries = New-Object System.Collections.Generic.List[string]
 
+$shaAsset = "sha256sums.txt"
+$shaPath = Join-Path $downloadDir $shaAsset
+if (Invoke-Download -Url (Get-LoomAssetUrl -VersionValue $Version -AssetName $shaAsset) -Destination $shaPath -Required $false) {
+    Copy-DownloadedAsset -Source $shaPath -Destination (Join-Path $loomRoot "sha256sums.txt")
+    $optionalEntries.Add("sha256sums.txt")
+}
+$sha256Sums = Read-Sha256Sums -Path $shaPath
+
 foreach ($item in $requiredAssets) {
     $downloadPath = Join-Path $downloadDir $item.Asset
     $url = Get-LoomAssetUrl -VersionValue $Version -AssetName $item.Asset
     Write-Host "Downloading required asset $($item.Asset)"
     Invoke-Download -Url $url -Destination $downloadPath -Required $true | Out-Null
+    Assert-ExpectedSha256 -Checksums $sha256Sums -AssetName $item.Asset -Path $downloadPath
     Copy-DownloadedAsset -Source $downloadPath -Destination (Join-Path $binDir $item.Target)
 }
 
@@ -143,19 +221,13 @@ foreach ($bundle in $optionalBundles) {
     $downloadPath = Join-Path $downloadDir $bundle.Asset
     if (Invoke-Download -Url (Get-LoomAssetUrl -VersionValue $Version -AssetName $bundle.Asset) -Destination $downloadPath -Required $false) {
         New-Item -ItemType Directory -Path $bundle.TargetDir -Force | Out-Null
+        Assert-SafeTarEntries -TarPath $downloadPath
         tar -xzf $downloadPath -C $bundle.TargetDir
         if ($LASTEXITCODE -ne 0) {
             throw "Failed to extract $($bundle.Asset)"
         }
         $optionalEntries.Add($bundle.ManifestPath)
     }
-}
-
-$shaAsset = "sha256sums.txt"
-$shaPath = Join-Path $downloadDir $shaAsset
-if (Invoke-Download -Url (Get-LoomAssetUrl -VersionValue $Version -AssetName $shaAsset) -Destination $shaPath -Required $false) {
-    Copy-DownloadedAsset -Source $shaPath -Destination (Join-Path $loomRoot "sha256sums.txt")
-    $optionalEntries.Add("sha256sums.txt")
 }
 
 $bootstrapAssets = @("bootstrap-driver.sh", "bootstrap-observer.sh", "bootstrap-slave.sh")
