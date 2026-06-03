@@ -77,6 +77,13 @@ public class LoomCommandBuilderTest {
     }
 
     @Test
+    public void registerDriverPreservesRegisterExitStatusThroughTee() {
+        String script = LoomCommandBuilder.registerDriverScript();
+
+        Assert.assertTrue(script.contains("set -o pipefail") || script.contains("${PIPESTATUS[0]}"));
+    }
+
+    @Test
     public void startScriptsNohupOuterProotCommand() {
         Assert.assertTrue(LoomCommandBuilder.startObserverScript("/data/data/com.termux/files/usr")
             .contains("nohup proot-distro login --user claude ubuntu"));
@@ -97,5 +104,11 @@ public class LoomCommandBuilderTest {
         Assert.assertTrue(stopSlaveScript.contains("kill $pids"));
         Assert.assertFalse(stopObserverScript.contains("proot-distro login --user claude ubuntu -- bash -lc 'pkill -f"));
         Assert.assertFalse(stopSlaveScript.contains("proot-distro login --user claude ubuntu -- bash -lc 'pkill -f"));
+    }
+
+    @Test
+    public void stopScriptsTolerateProcessExitBetweenLookupAndKill() {
+        Assert.assertTrue(LoomCommandBuilder.stopObserverScript().contains("kill $pids 2>/dev/null || true"));
+        Assert.assertTrue(LoomCommandBuilder.stopSlaveScript().contains("kill $pids 2>/dev/null || true"));
     }
 }

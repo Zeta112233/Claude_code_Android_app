@@ -71,6 +71,7 @@ public final class LoomCommandBuilder {
             + DRIVER_PROJECT + "/driver-agent register --config " + DRIVER_PROJECT + "/config.yaml";
 
         return header()
+            + "set -o pipefail\n"
             + "command -v proot-distro\n"
             + proot(command) + " 2>&1 | tee -a \"$HOME/loom-driver-register.log\"\n";
     }
@@ -127,7 +128,8 @@ public final class LoomCommandBuilder {
             + loomPidsFunction()
             + "pids=$(loom_pids '" + processPattern + "')\n"
             + "if [ -z \"$pids\" ]; then echo '" + name + ": not running'; exit 0; fi\n"
-            + "kill $pids\n";
+            + "kill $pids 2>/dev/null || true\n"
+            + "echo '" + name + ": stopped'\n";
     }
 
     private static String logPath(String prefix, String fileName) {
