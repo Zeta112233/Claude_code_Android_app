@@ -40,4 +40,62 @@ public class LoomCommandBuilderTest {
         Assert.assertTrue(script.contains("/home/claude/loom-driver/driver-agent register"));
         Assert.assertTrue(script.contains("--config /home/claude/loom-driver/config.yaml"));
     }
+
+    @Test
+    public void lifecycleScriptsFilterWrapperProcessesBeforeMatching() {
+        String statusScript = LoomCommandBuilder.statusScript("/data/data/com.termux/files/usr");
+        String stopObserverScript = LoomCommandBuilder.stopObserverScript();
+        String stopSlaveScript = LoomCommandBuilder.stopSlaveScript();
+
+        Assert.assertTrue(statusScript.contains("loom_pids()"));
+        Assert.assertTrue(statusScript.contains("[ \"$p\" = \"$$\" ] && continue"));
+        Assert.assertTrue(statusScript.contains("grep -Eq 'bash -lc|proot-distro login' && continue"));
+        Assert.assertTrue(stopObserverScript.contains("loom_pids()"));
+        Assert.assertTrue(stopSlaveScript.contains("loom_pids()"));
+        Assert.assertFalse(stopObserverScript.contains("\npkill -f 'observer-server --config .*observer-local/observer.yaml'"));
+        Assert.assertFalse(stopSlaveScript.contains("\npkill -f 'slave-agent .*\\.loom/slave-local/config.yaml'"));
+    }
+
+    @Test
+    public void observerLifecycleUsesConsistentAbsoluteConfigPath() {
+        String startScript = LoomCommandBuilder.startObserverScript("/data/data/com.termux/files/usr");
+        String statusScript = LoomCommandBuilder.statusScript("/data/data/com.termux/files/usr");
+        String stopScript = LoomCommandBuilder.stopObserverScript();
+
+        Assert.assertTrue(startScript.contains(
+            "observer-server --config /home/claude/.loom/observer-local/observer.yaml"));
+        Assert.assertTrue(statusScript.contains("observer-local/observer.yaml"));
+        Assert.assertTrue(stopScript.contains("observer-local/observer.yaml"));
+    }
+
+    @Test
+    public void registerDriverKeepsStdoutVisibleWhileLogging() {
+        String script = LoomCommandBuilder.registerDriverScript();
+
+        Assert.assertTrue(script.contains("tee -a \"$HOME/loom-driver-register.log\""));
+        Assert.assertFalse(script.contains(">> \"$HOME/loom-driver-register.log\" 2>&1"));
+    }
+
+    @Test
+    public void startScriptsNohupOuterProotCommand() {
+        Assert.assertTrue(LoomCommandBuilder.startObserverScript("/data/data/com.termux/files/usr")
+            .contains("nohup proot-distro login --user claude ubuntu"));
+        Assert.assertTrue(LoomCommandBuilder.startSlaveScript("/data/data/com.termux/files/usr")
+            .contains("nohup proot-distro login --user claude ubuntu"));
+    }
+
+    @Test
+    public void stopScriptsExitZeroWhenNothingIsRunningAndKillExplicitPids() {
+        String stopObserverScript = LoomCommandBuilder.stopObserverScript();
+        String stopSlaveScript = LoomCommandBuilder.stopSlaveScript();
+
+        Assert.assertTrue(stopObserverScript.contains("not running"));
+        Assert.assertTrue(stopObserverScript.contains("exit 0"));
+        Assert.assertTrue(stopObserverScript.contains("kill $pids"));
+        Assert.assertTrue(stopSlaveScript.contains("not running"));
+        Assert.assertTrue(stopSlaveScript.contains("exit 0"));
+        Assert.assertTrue(stopSlaveScript.contains("kill $pids"));
+        Assert.assertFalse(stopObserverScript.contains("proot-distro login --user claude ubuntu -- bash -lc 'pkill -f"));
+        Assert.assertFalse(stopSlaveScript.contains("proot-distro login --user claude ubuntu -- bash -lc 'pkill -f"));
+    }
 }

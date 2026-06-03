@@ -10,6 +10,8 @@ public final class LoomCommandBuilder {
 
     private static final String OBSERVER_PROCESS = "observer-server --config .*observer-local/observer.yaml";
     private static final String SLAVE_PROCESS = "slave-agent .*\\.loom/slave-local/config.yaml";
+    private static final String OBSERVER_CONFIG = OBSERVER_HOME + "/observer.yaml";
+    private static final String SLAVE_CONFIG = SLAVE_HOME + "/config.yaml";
 
     private LoomCommandBuilder() {
     }
@@ -20,19 +22,23 @@ public final class LoomCommandBuilder {
         String driverRegisterLog = logPath(prefix, "loom-driver-register.log");
         String ubuntuStatus = ""
             + "set +e\n"
+            + loomPidsFunction()
             + "echo '[loom] Ubuntu binaries'\n"
             + "command -v observer-server\n"
             + "command -v driver-agent\n"
             + "command -v slave-agent\n"
             + "echo '[loom] processes'\n"
-            + "pgrep -f '" + OBSERVER_PROCESS + "' && echo 'observer: running' || echo 'observer: stopped'\n"
-            + "pgrep -f '" + SLAVE_PROCESS + "' && echo 'slave: running' || echo 'slave: stopped'";
+            + "observer_pids=$(loom_pids '" + OBSERVER_PROCESS + "')\n"
+            + "test -n \"$observer_pids\" && echo 'observer: running' || echo 'observer: stopped'\n"
+            + "slave_pids=$(loom_pids '" + SLAVE_PROCESS + "')\n"
+            + "test -n \"$slave_pids\" && echo 'slave: running' || echo 'slave: stopped'";
 
         return header()
             + "echo '[loom] Termux binaries'\n"
             + "command -v proot-distro\n"
             + readableCommand("pgrep -f '" + OBSERVER_PROCESS + "'")
             + readableCommand("pgrep -f '" + SLAVE_PROCESS + "'")
+            + readableCommand("ps -p \"$p\" -o args= | grep -Eq 'bash -lc|proot-distro login' && continue")
             + proot(ubuntuStatus) + "\n"
             + tailLog("observer log", observerLog)
             + tailLog("slave log", slaveLog)
@@ -43,18 +49,19 @@ public final class LoomCommandBuilder {
         String observerLog = logPath(prefix, "loom-observer.log");
         String command = ""
             + "cd " + OBSERVER_HOME + "\n"
-            + "nohup observer-server --config observer.yaml >> " + shellQuote(observerLog) + " 2>&1 &";
+            + "exec observer-server --config " + OBSERVER_CONFIG;
 
         return header()
             + "command -v proot-distro\n"
-            + proot(command) + "\n";
+            + readableCommand("nohup observer-server --config observer.yaml")
+            + nohupProot(command, observerLog) + "\n";
     }
 
     public static String stopObserverScript() {
-        String command = "pkill -f '" + OBSERVER_PROCESS + "'";
+        String command = stopCommand(OBSERVER_PROCESS, "observer");
         return header()
             + "command -v proot-distro\n"
-            + readableCommand(command)
+            + readableCommand("pkill -f '" + OBSERVER_PROCESS + "'")
             + proot(command) + "\n";
     }
 
@@ -65,26 +72,27 @@ public final class LoomCommandBuilder {
 
         return header()
             + "command -v proot-distro\n"
-            + proot(command) + " >> \"$HOME/loom-driver-register.log\" 2>&1\n";
+            + proot(command) + " 2>&1 | tee -a \"$HOME/loom-driver-register.log\"\n";
     }
 
     public static String startSlaveScript(String prefix) {
         String slaveLog = logPath(prefix, "loom-slave.log");
         String command = ""
-            + "pkill -0 -f '" + SLAVE_PROCESS + "' && echo 'slave: already running' && exit 0\n"
-            + "nohup slave-agent " + SLAVE_HOME + "/config.yaml >> " + shellQuote(slaveLog) + " 2>&1 &";
+            + loomPidsFunction()
+            + "pids=$(loom_pids '" + SLAVE_PROCESS + "')\n"
+            + "if [ -n \"$pids\" ]; then echo 'slave: already running'; exit 0; fi\n"
+            + "exec slave-agent " + SLAVE_CONFIG;
 
         return header()
             + "command -v proot-distro\n"
-            + readableCommand("pkill -0 -f '" + SLAVE_PROCESS + "'")
-            + proot(command) + "\n";
+            + nohupProot(command, slaveLog) + "\n";
     }
 
     public static String stopSlaveScript() {
-        String command = "pkill -f '" + SLAVE_PROCESS + "'";
+        String command = stopCommand(SLAVE_PROCESS, "slave");
         return header()
             + "command -v proot-distro\n"
-            + readableCommand(command)
+            + readableCommand("pkill -f '" + SLAVE_PROCESS + "'")
             + proot(command) + "\n";
     }
 
@@ -96,6 +104,30 @@ public final class LoomCommandBuilder {
     private static String proot(String innerCommand) {
         return "proot-distro login --user " + PROOT_USER + " ubuntu -- bash -lc "
             + shellQuote(innerCommand);
+    }
+
+    private static String nohupProot(String innerCommand, String logPath) {
+        return "nohup " + proot(innerCommand) + " >> " + shellQuote(logPath) + " 2>&1 &";
+    }
+
+    private static String loomPidsFunction() {
+        return "loom_pids() {\n"
+            + "    pattern=\"$1\"\n"
+            + "    pgrep -f \"$pattern\" 2>/dev/null | while read -r p; do\n"
+            + "        [ \"$p\" = \"$$\" ] && continue\n"
+            + "        ps -p \"$p\" -o args= 2>/dev/null | grep -Eq 'bash -lc|proot-distro login' && continue\n"
+            + "        echo \"$p\"\n"
+            + "    done\n"
+            + "}\n";
+    }
+
+    private static String stopCommand(String processPattern, String name) {
+        return ""
+            + "set +e\n"
+            + loomPidsFunction()
+            + "pids=$(loom_pids '" + processPattern + "')\n"
+            + "if [ -z \"$pids\" ]; then echo '" + name + ": not running'; exit 0; fi\n"
+            + "kill $pids\n";
     }
 
     private static String logPath(String prefix, String fileName) {
