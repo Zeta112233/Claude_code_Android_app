@@ -50,6 +50,7 @@ public class AutoUbuntuManager {
 
     private final TermuxActivity mActivity;
     private AutoAgentServerManager mAgentServerManager;
+    private AutoLoomManager mLoomManager;
     private boolean mAutoLaunchAttempted;
     private boolean mEnabled = true;
 
@@ -66,6 +67,11 @@ public class AutoUbuntuManager {
     /** 注入 AgentServer 管理器引用，用于在复制安装包前确认提取完成。 */
     public void setAgentServerManager(@NonNull AutoAgentServerManager mgr) {
         mAgentServerManager = mgr;
+    }
+
+    /** 注入 Loom 管理器引用，用于复制离线 Loom addon。 */
+    public void setLoomManager(@NonNull AutoLoomManager mgr) {
+        mLoomManager = mgr;
     }
 
     public void setEnabled(boolean enabled) {
@@ -390,6 +396,10 @@ public class AutoUbuntuManager {
         // 等待 AgentServer asset 提取完成（最多 5 秒），避免 cp 时文件不存在被静默跳过
         if (mAgentServerManager != null) {
             mAgentServerManager.awaitExtraction(5000);
+        }
+        // 等待 Loom asset 提取完成（最多 5 秒），避免复制时错过离线 addon
+        if (mLoomManager != null) {
+            mLoomManager.awaitExtraction(5000);
         }
         // 脚本写入临时文件再执行，避免超长单行命令超出 pty 输入缓冲区（N_TTY_BUF_SIZE=4096）被截断
         String scriptPath = writeScriptToFile();
@@ -778,6 +788,8 @@ public class AutoUbuntuManager {
             AutoAgentServerManager.ASSET_TGZ_REL).getAbsolutePath();
         String agentInnerPath = new File(mActivity.getFilesDir(),
             AutoAgentServerManager.INNER_SCRIPT_REL).getAbsolutePath();
+        String loomTgzPath = mLoomManager == null ? "" : mLoomManager.getTgzPath();
+        String loomInnerPath = mLoomManager == null ? "" : mLoomManager.getInnerScriptPath();
         sb.append("if [ \"$auto_ok\" = \"1\" ]; then ")
           .append("_ubr=\"$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu\"; ")
           .append("_cis=\"").append(claudeInnerPath).append("\"; ")
@@ -798,6 +810,17 @@ public class AutoUbuntuManager {
           .append("{ grep -qF '.agentserver-setup' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
           .append("printf '\\n[ -f ~/.agentserver-setup.sh ] && . ~/.agentserver-setup.sh\\n' ")
           .append(">> \"$_ubr/root/.bashrc\"; }; ")
+          // 注入 Loom addon + 安装向导（独立于 AgentServer 包，复用同一个 Ubuntu runtime）
+          .append("if [ -n \"").append(loomTgzPath).append("\" ] && [ -f \"").append(loomTgzPath).append("\" ] && [ -s \"").append(loomTgzPath).append("\" ]; then ")
+          .append("mkdir -p \"$_ubr/tmp\" && ")
+          .append("cp \"").append(loomTgzPath).append("\" \"$_ubr/tmp/loom-linux-arm64.tgz\" && ")
+          .append("echo \"[*] Loom addon 已复制到 Ubuntu /tmp/\"; ")
+          .append("else echo \"[!] Loom addon 未就绪，将由脚本联网下载\"; fi; ")
+          .append("if [ -n \"").append(loomInnerPath).append("\" ] && [ -f \"").append(loomInnerPath).append("\" ]; then ")
+          .append("cp \"").append(loomInnerPath).append("\" \"$_ubr/root/.loom-setup.sh\" && ")
+          .append("{ grep -qF '.loom-setup' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
+          .append("printf '\\n[ -f ~/.loom-setup.sh ] && . ~/.loom-setup.sh\\n' ")
+          .append(">> \"$_ubr/root/.bashrc\"; }; fi; ")
           // root/.bashrc 末尾注入 exec su - claude（幂等），使终端自动切换为 claude 用户
           .append("{ grep -qF 'exec su - claude' \"$_ubr/root/.bashrc\" 2>/dev/null || ")
           .append("printf '\\nexec su - claude\\n' >> \"$_ubr/root/.bashrc\"; }; ")
@@ -824,7 +847,7 @@ public class AutoUbuntuManager {
           .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/clipboard\\n' \"$_bp\" ")
           .append("> \"$_ubr/usr/local/bin/termux-clipboard-get\" && ")
           .append("chmod +x \"$_ubr/usr/local/bin/termux-clipboard-get\" 2>/dev/null; ")
-          .append("echo \"[*] Claude + AgentServer setup + capabilities ready.\"; fi; fi; ");
+          .append("echo \"[*] Claude + AgentServer + Loom setup + capabilities ready.\"; fi; fi; ");
 
         // ── Step 2.95: 在 Ubuntu 内创建 claude 用户（非交互），并建 capabilities 软链接 ──
         final String capPath = capabilitiesPath;
