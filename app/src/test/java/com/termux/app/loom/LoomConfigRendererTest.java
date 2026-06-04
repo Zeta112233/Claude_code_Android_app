@@ -6,6 +6,13 @@ import org.junit.Test;
 public class LoomConfigRendererTest {
 
     @Test
+    public void defaultsIncludeLocalBootstrapApiKey() {
+        LoomSettings settings = LoomSettings.defaults();
+
+        Assert.assertEquals("loom-local-bootstrap-key", settings.workspaceApiKey);
+    }
+
+    @Test
     public void observerConfigContainsListenDbAndApiKey() {
         LoomSettings settings = LoomSettings.defaults()
             .withObserverListenAddr("127.0.0.1:8090")

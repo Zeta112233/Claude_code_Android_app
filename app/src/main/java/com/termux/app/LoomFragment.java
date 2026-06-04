@@ -185,7 +185,7 @@ public class LoomFragment extends Fragment {
         return d.withRoleMode(selectedRoleMode())
             .withObserverUrl(valueOrDefault(mObserverUrl, d.observerUrl))
             .withWorkspaceId(valueOrDefault(mWorkspaceId, d.workspaceId))
-            .withWorkspaceApiKey(mWorkspaceApiKey.getText().toString().trim())
+            .withWorkspaceApiKey(valueOrDefault(mWorkspaceApiKey, d.workspaceApiKey))
             .withAgentServerUrl(valueOrDefault(mAgentServerUrl, d.agentServerUrl))
             .withObserverName(valueOrDefault(mObserverName, d.observerName))
             .withDriverName(valueOrDefault(mDriverName, d.driverName))
@@ -197,30 +197,31 @@ public class LoomFragment extends Fragment {
         LoomSettings d = LoomSettings.defaults();
         SharedPreferences p = requireContext()
             .getSharedPreferences(LoomSettings.PREFS_NAME, Context.MODE_PRIVATE);
-        mObserverUrl.setText(p.getString(LoomSettings.KEY_OBSERVER_URL, d.observerUrl));
-        mWorkspaceId.setText(p.getString(LoomSettings.KEY_WORKSPACE_ID, d.workspaceId));
-        mWorkspaceApiKey.setText(p.getString(LoomSettings.KEY_WORKSPACE_API_KEY, d.workspaceApiKey));
-        mAgentServerUrl.setText(p.getString(LoomSettings.KEY_AGENTSERVER_URL, d.agentServerUrl));
-        mObserverName.setText(p.getString(LoomSettings.KEY_OBSERVER_NAME, d.observerName));
-        mDriverName.setText(p.getString(LoomSettings.KEY_DRIVER_NAME, d.driverName));
-        mSlaveName.setText(p.getString(LoomSettings.KEY_SLAVE_NAME, d.slaveName));
-        mTags.setText(p.getString(LoomSettings.KEY_TAGS, d.tags));
+        mObserverUrl.setText(prefOrDefault(p, LoomSettings.KEY_OBSERVER_URL, d.observerUrl));
+        mWorkspaceId.setText(prefOrDefault(p, LoomSettings.KEY_WORKSPACE_ID, d.workspaceId));
+        mWorkspaceApiKey.setText(prefOrDefault(p, LoomSettings.KEY_WORKSPACE_API_KEY, d.workspaceApiKey));
+        mAgentServerUrl.setText(prefOrDefault(p, LoomSettings.KEY_AGENTSERVER_URL, d.agentServerUrl));
+        mObserverName.setText(prefOrDefault(p, LoomSettings.KEY_OBSERVER_NAME, d.observerName));
+        mDriverName.setText(prefOrDefault(p, LoomSettings.KEY_DRIVER_NAME, d.driverName));
+        mSlaveName.setText(prefOrDefault(p, LoomSettings.KEY_SLAVE_NAME, d.slaveName));
+        mTags.setText(prefOrDefault(p, LoomSettings.KEY_TAGS, d.tags));
         mRoleMode.setSelection(indexOfRole(p.getString(LoomSettings.KEY_ROLE_MODE, d.roleMode)), false);
         updateRoleActions();
     }
 
     private void savePrefs() {
+        LoomSettings d = LoomSettings.defaults();
         requireContext().getSharedPreferences(LoomSettings.PREFS_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(LoomSettings.KEY_ROLE_MODE, selectedRoleMode())
-            .putString(LoomSettings.KEY_OBSERVER_URL, mObserverUrl.getText().toString().trim())
-            .putString(LoomSettings.KEY_WORKSPACE_ID, mWorkspaceId.getText().toString().trim())
-            .putString(LoomSettings.KEY_WORKSPACE_API_KEY, mWorkspaceApiKey.getText().toString().trim())
-            .putString(LoomSettings.KEY_AGENTSERVER_URL, mAgentServerUrl.getText().toString().trim())
-            .putString(LoomSettings.KEY_OBSERVER_NAME, mObserverName.getText().toString().trim())
-            .putString(LoomSettings.KEY_DRIVER_NAME, mDriverName.getText().toString().trim())
-            .putString(LoomSettings.KEY_SLAVE_NAME, mSlaveName.getText().toString().trim())
-            .putString(LoomSettings.KEY_TAGS, mTags.getText().toString().trim())
+            .putString(LoomSettings.KEY_OBSERVER_URL, valueOrDefault(mObserverUrl, d.observerUrl))
+            .putString(LoomSettings.KEY_WORKSPACE_ID, valueOrDefault(mWorkspaceId, d.workspaceId))
+            .putString(LoomSettings.KEY_WORKSPACE_API_KEY, valueOrDefault(mWorkspaceApiKey, d.workspaceApiKey))
+            .putString(LoomSettings.KEY_AGENTSERVER_URL, valueOrDefault(mAgentServerUrl, d.agentServerUrl))
+            .putString(LoomSettings.KEY_OBSERVER_NAME, valueOrDefault(mObserverName, d.observerName))
+            .putString(LoomSettings.KEY_DRIVER_NAME, valueOrDefault(mDriverName, d.driverName))
+            .putString(LoomSettings.KEY_SLAVE_NAME, valueOrDefault(mSlaveName, d.slaveName))
+            .putString(LoomSettings.KEY_TAGS, valueOrDefault(mTags, d.tags))
             .apply();
     }
 
@@ -415,6 +416,12 @@ public class LoomFragment extends Fragment {
     private String valueOrDefault(EditText view, String defaultValue) {
         String value = view.getText().toString().trim();
         return value.isEmpty() ? defaultValue : value;
+    }
+
+    private String prefOrDefault(SharedPreferences prefs, String key, String defaultValue) {
+        String value = prefs.getString(key, defaultValue);
+        if (value == null || value.trim().isEmpty()) return defaultValue;
+        return value;
     }
 
     private String prefix() {

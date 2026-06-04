@@ -55,7 +55,7 @@ public final class LoomSettings {
             "http://127.0.0.1:8090",
             "127.0.0.1:8090",
             "ws-phone",
-            "",
+            "loom-local-bootstrap-key",
             "https://agent.cs.ac.cn",
             "observer-phone",
             "driver-phone",
