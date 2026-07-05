@@ -7,6 +7,7 @@ import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.core.content.ContextCompat;
 
+import com.portalagent.apitools.TermuxApiCatalog;
 import com.termux.api.apis.BatteryStatusAPI;
 import com.termux.api.apis.CameraInfoAPI;
 import com.termux.api.apis.SensorAPI;
@@ -135,6 +136,8 @@ public class CapabilitiesManager {
                 "Android APIs are bridged via HTTP on 127.0.0.1:" + ApiHttpBridgeServer.PORT
                 + ". Use curl from Ubuntu — wrapper scripts in /usr/local/bin/ call the same endpoints.");
             apiInstructions.put("http_bridge_port", ApiHttpBridgeServer.PORT);
+            apiInstructions.put("termux_api_catalog_endpoint", "GET /termux-api/catalog");
+            apiInstructions.put("termux_api_catalog_command", "termux-api-catalog");
             apiInstructions.put("http_endpoints", new JSONArray()
                 .put("GET /battery   → real-time battery status JSON")
                 .put("GET /camera    → camera list JSON")
@@ -153,6 +156,7 @@ public class CapabilitiesManager {
             apiInstructions.put("capabilities_file",
                 TermuxConstants.TERMUX_HOME_DIR_PATH + "/capabilities.json");
             root.put("api_instructions", apiInstructions);
+            root.put("termux_api_catalog", TermuxApiCatalog.toJsonArray());
 
             // ── 生成时间 ──────────────────────────────────────────────────────
             root.put("generated_at",

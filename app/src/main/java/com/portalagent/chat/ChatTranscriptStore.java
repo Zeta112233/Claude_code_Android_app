@@ -84,6 +84,7 @@ public final class ChatTranscriptStore {
         obj.put("content", message.content == null ? "" : message.content);
         obj.put("thinking", message.thinking == null ? "" : message.thinking);
         obj.put("thinkingCollapsed", message.thinkingCollapsed);
+        obj.put("outputComplete", message.outputComplete);
         obj.put("toolName", message.toolName == null ? "" : message.toolName);
         obj.put("toolDetail", message.toolDetail == null ? "" : message.toolDetail);
         obj.put("toolDetailCollapsed", message.toolDetailCollapsed);
@@ -102,6 +103,7 @@ public final class ChatTranscriptStore {
         String thinking = obj.optString("thinking", "");
         message.thinking = thinking.isEmpty() ? null : thinking;
         message.thinkingCollapsed = obj.optBoolean("thinkingCollapsed", false);
+        message.outputComplete = obj.optBoolean("outputComplete", true);
         String toolName = obj.optString("toolName", "");
         message.toolName = toolName.isEmpty() ? null : toolName;
         String toolDetail = obj.optString("toolDetail", "");

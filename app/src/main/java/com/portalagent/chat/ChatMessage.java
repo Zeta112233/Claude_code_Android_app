@@ -1,5 +1,7 @@
 package com.portalagent.chat;
 
+import android.text.Spanned;
+
 /** 聊天消息数据类，用于简化 UI 的聊天视图。 */
 public class ChatMessage {
 
@@ -11,6 +13,10 @@ public class ChatMessage {
     public String content;            // 主气泡正文（USER/ASSISTANT/SYSTEM）或标题行（TOOL_USE/TOOL_RESULT）
     public String thinking;           // 思考过程原文（null = 无思考内容）
     public boolean thinkingCollapsed; // true = 折叠显示（回复完成后）
+    public boolean outputComplete = true;
+    public transient String renderedMarkdownSource;
+    public transient Spanned renderedMarkdown;
+    public transient boolean toolGroupExpanded;
 
     // TOOL_USE / TOOL_RESULT 专用字段
     public String  toolName;            // 工具名，例如 "Bash"
@@ -28,6 +34,12 @@ public class ChatMessage {
 
     public static ChatMessage assistant(String content) {
         return new ChatMessage(Type.ASSISTANT, content);
+    }
+
+    public static ChatMessage assistantStreaming(String content) {
+        ChatMessage message = new ChatMessage(Type.ASSISTANT, content);
+        message.outputComplete = false;
+        return message;
     }
 
     public static ChatMessage system(String content) {

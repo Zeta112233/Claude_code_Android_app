@@ -5,6 +5,7 @@ import android.os.Build;
 
 import com.portalagent.mcp.McpAccessibilityService;
 import com.portalagent.mcp.McpTool;
+import com.portalagent.mcp.WorkspaceAccessPolicy;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -85,6 +86,8 @@ public class UiTool implements McpTool {
 
     @Override
     public String call(JSONObject args, Context context) throws Exception {
+        WorkspaceAccessPolicy.enforceAccessibilityForeground(context, getName());
+
         if (!McpAccessibilityService.isRunning()) {
             return text("Accessibility permission not granted. " +
                 "Please enable 'PortalAgent' in Settings → Accessibility.");

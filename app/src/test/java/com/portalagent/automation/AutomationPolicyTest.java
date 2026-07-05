@@ -23,6 +23,10 @@ public class AutomationPolicyTest {
         JSONObject redacted = AutomationPolicy.redactArguments("ui.input_text", step.arguments);
         Assert.assertEquals("[redacted]", redacted.optString("text"));
         Assert.assertEquals("secret-token", step.arguments.optString("text"));
+        Assert.assertEquals("[redacted]", AutomationPolicy.redactResultSummary(
+            "ui.input_text", "Input text: \"secret-token\""));
+        Assert.assertEquals("started; timeout_ms=12000", AutomationPolicy.redactResultSummary(
+            "ui.input_text", "started; timeout_ms=12000"));
     }
 
     @Test
@@ -36,6 +40,8 @@ public class AutomationPolicyTest {
         JSONObject redacted = AutomationPolicy.redactArguments("adb.input_text", step.arguments);
         Assert.assertEquals("[redacted]", redacted.optString("text"));
         Assert.assertEquals("secret-token", step.arguments.optString("text"));
+        Assert.assertEquals("[redacted]", AutomationPolicy.redactResultSummary(
+            "adb.input_text", "typed secret-token"));
     }
 
     @Test

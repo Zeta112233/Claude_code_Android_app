@@ -45,8 +45,10 @@ public final class ToolTraceStore {
             try {
                 ensureDir();
                 JSONObject redactedArguments = AutomationPolicy.redactArguments(event.toolName, event.arguments);
+                String redactedSummary = AutomationPolicy.redactResultSummary(
+                    event.toolName, event.resultSummary);
                 ToolTraceEvent redactedEvent = new ToolTraceEvent(event.id, event.timestampMs, event.taskId,
-                    event.toolName, redactedArguments, event.success, event.resultSummary,
+                    event.toolName, redactedArguments, event.success, redactedSummary,
                     event.packageName, event.activityName);
                 String line = redactedEvent.toJson().toString() + "\n";
                 Files.write(traceFile().toPath(), line.getBytes(StandardCharsets.UTF_8),

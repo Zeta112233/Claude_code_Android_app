@@ -25,7 +25,7 @@ import java.security.MessageDigest;
  *   2. 不健康 / 不存在 → 下载快照 → SHA256 验证 → 解压替换 rootfs
  *   3. 下载失败 → 回退到现有 assets + 原有安装流程
  *
- * 快照托管在 GitHub Releases，不打入 APK，避免 APK 体积过大。
+ * 快照优先使用 APK 内置 asset；asset 缺失时再从 GitHub Releases 下载。
  */
 public class UbuntuSnapshotManager {
 
@@ -42,9 +42,9 @@ public class UbuntuSnapshotManager {
     public static final String SNAPSHOT_SIZE_LABEL =
         Math.round(SNAPSHOT_BYTES / 1024.0 / 1024.0) + "MB";
 
-    // APK 内置快照 asset 路径（构建时手动放置，不入 git）
+    // APK 内置快照 asset 路径。
     static final String SNAPSHOT_ASSET_NAME =
-        "ubuntu-snapshot/ubuntu-claude-aarch64-20260512.tar.xz";
+        "ubuntu-snapshot/ubuntu-claude-aarch64-20260521.tar.xz";
 
     // ── 路径 ──────────────────────────────────────────────────────────────
     private static final String PREFIX    = TermuxConstants.TERMUX_PREFIX_DIR_PATH;

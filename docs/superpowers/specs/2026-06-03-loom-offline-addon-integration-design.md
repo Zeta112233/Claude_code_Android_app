@@ -20,7 +20,7 @@ This gives the maintenance benefit of separated updates without duplicating the 
 
 The app currently contains:
 
-- `ubuntu-snapshot/ubuntu-claude-aarch64-20260512.tar.xz` as the large shared Ubuntu/Claude base.
+- `ubuntu-snapshot/ubuntu-claude-aarch64-20260521.tar.xz` as the large shared Ubuntu/Claude base.
 - `agentserver-linux-arm64.tgz` as an AgentServer asset, extracted by `AutoAgentServerManager`.
 - `AutoUbuntuManager`, which installs proot/Ubuntu, injects Claude configuration, the Android MCP configuration, and AgentServer setup hooks.
 - `AgentServerFragment`, which manages AgentServer status, connect/disconnect, OAuth QR handling, and logs.

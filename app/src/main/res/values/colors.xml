@@ -2,6 +2,7 @@
 <resources>
     <color name="ic_launcher_background">#ECFEFF</color>
     <color name="portalagent_splash_background">#ECFEFF</color>
+    <color name="black_overlay">#66000000</color>
 
     <!-- ── Brand ─────────────────────────────────────────── -->
     <color name="app_primary">#2563EB</color>
@@ -51,6 +52,8 @@
     <color name="app_success_surface">#ECFDF5</color>
     <color name="app_warning_surface">#FFFBEB</color>
     <color name="app_danger_surface">#FEF2F2</color>
+    <color name="red_error">#DC143C</color>
+    <color name="red_error_link">#FC143C</color>
     <color name="app_status_active">#2563EB</color>
     <color name="app_status_connected">#16A34A</color>
 

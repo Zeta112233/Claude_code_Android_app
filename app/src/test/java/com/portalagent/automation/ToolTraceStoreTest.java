@@ -51,6 +51,7 @@ public class ToolTraceStoreTest {
         Assert.assertEquals(1, events.size());
         Assert.assertEquals("[redacted]", events.get(0).argumentsCopy().optString("text"));
         Assert.assertEquals("replace", events.get(0).argumentsCopy().optString("mode"));
+        Assert.assertEquals("[redacted]", events.get(0).resultSummary);
     }
 
     @Test

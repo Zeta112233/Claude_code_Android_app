@@ -29,7 +29,7 @@ public class ChatTranscriptStoreTest {
         messages.add(thinking);
         messages.add(ChatMessage.toolUse("android.get_status", "{}"));
         messages.add(ChatMessage.toolResult("android.get_status", "ok", "{\"ok\":true}"));
-        messages.add(ChatMessage.assistant("done"));
+        messages.add(ChatMessage.assistantStreaming("done"));
 
         store.save("codex-local", messages);
         List<ChatMessage> loaded = store.load("codex-local");
@@ -42,5 +42,6 @@ public class ChatTranscriptStoreTest {
         Assert.assertEquals("android.get_status", loaded.get(2).toolName);
         Assert.assertEquals(ChatMessage.Type.TOOL_RESULT, loaded.get(3).type);
         Assert.assertEquals("done", loaded.get(4).content);
+        Assert.assertFalse(loaded.get(4).outputComplete);
     }
 }

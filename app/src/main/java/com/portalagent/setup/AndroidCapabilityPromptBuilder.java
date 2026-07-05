@@ -89,6 +89,7 @@ public final class AndroidCapabilityPromptBuilder {
             + "curl http://127.0.0.1:" + ApiHttpBridgeServer.PORT + "/sensors    # 传感器列表\n"
             + "curl http://127.0.0.1:" + ApiHttpBridgeServer.PORT + "/camera     # 摄像头信息\n"
             + "curl http://127.0.0.1:" + ApiHttpBridgeServer.PORT + "/clipboard  # 剪贴板内容\n"
+            + "curl http://127.0.0.1:" + ApiHttpBridgeServer.PORT + "/termux-api/catalog  # 完整 Termux:API 目录\n"
             + "```\n\n"
 
             + "## MCP/HTTP Android 控制循环\n\n"

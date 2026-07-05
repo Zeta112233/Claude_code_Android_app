@@ -4,6 +4,7 @@ import com.termux.app.TermuxActivity;
 import com.portalagent.chat.ChatAdapter;
 import com.portalagent.chat.ChatMessage;
 import com.portalagent.chat.ChatTranscriptStore;
+import com.portalagent.chat.ChatTurnOrdering;
 import com.portalagent.keys.ApiKeyStore;
 import com.portalagent.provider.AssistantProvider;
 import com.portalagent.provider.ProviderConfigManager;
@@ -240,6 +241,7 @@ public class HomeFragment extends Fragment {
         mAdapter = new ChatAdapter(mMessages);
         updateAssistantLabel();
         mRecycler.setAdapter(mAdapter);
+        mRecycler.setItemAnimator(null);
 
         mStatusText           = view.findViewById(R.id.home_status_text);
         mSessionTitle         = view.findViewById(R.id.home_session_title);
@@ -631,7 +633,8 @@ public class HomeFragment extends Fragment {
         mTurnOutputAnchored = false;
         mAdapter.addMessage(ChatMessage.user(displayText));
         mInputEdit.setText("");
-        mAdapter.addMessage(ChatMessage.assistant("…"));
+        scrollToCurrentTurnUserInput();
+        mAdapter.addMessage(ChatMessage.assistantStreaming("…"));
 
         mWaitingResponse = true;
         updateStatus("● 运行中", 0xFF1565C0);
@@ -689,10 +692,10 @@ public class HomeFragment extends Fragment {
                     mBoosting = false;
                     mTurnOutputAnchored = false;
                     mAdapter.addMessage(ChatMessage.user(displayText));
+                    scrollToCurrentTurnUserInput();
                     mAdapter.addMessage(ChatMessage.assistant("已通过 Automation Boost 完成：" + recipeName));
                     updateStatus("● 就绪", 0xFF2E7D32);
                     FloatingStatusService.updateBoostStatus("● Boost completed", 0xFF2E7D32, displayText, false);
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
 
@@ -739,6 +742,7 @@ public class HomeFragment extends Fragment {
         updateStatus("● 就绪", 0xFF2E7D32);
         FloatingStatusService.updateStatus("● 就绪", 0xFF2E7D32, "", false);
         // 给最后一条 assistant 气泡追加打断标记（沿用 SYSTEM 灰条提示）
+        mAdapter.markLastAssistantOutputComplete();
         mAdapter.addMessage(ChatMessage.system("● 已打断"));
         scrollToBottom();
     }
@@ -900,7 +904,7 @@ public class HomeFragment extends Fragment {
         mMessages.clear();
         mMessages.addAll(snapshot);
         if (running && needsCodexRunningPlaceholder(snapshot)) {
-            mMessages.add(ChatMessage.assistant("…"));
+            mMessages.add(ChatMessage.assistantStreaming("…"));
         }
         mAdapter.notifyDataSetChanged();
         mWaitingResponse = running;
@@ -1368,11 +1372,26 @@ public class HomeFragment extends Fragment {
         });
     }
 
+    private void scrollToCurrentTurnUserInput() {
+        if (mRecycler == null || mAdapter == null) return;
+        mRecycler.post(() -> {
+            int index = ChatTurnOrdering.currentTurnStart(mMessages);
+            if (index < 0) return;
+            RecyclerView.LayoutManager layoutManager = mRecycler.getLayoutManager();
+            if (layoutManager instanceof LinearLayoutManager) {
+                int offset = (int) (12 * getResources().getDisplayMetrics().density);
+                ((LinearLayoutManager) layoutManager).scrollToPositionWithOffset(index, offset);
+            } else {
+                mRecycler.scrollToPosition(index);
+            }
+        });
+    }
+
     private void scrollToCurrentTurnOutputStartOnce() {
         if (mTurnOutputAnchored || mRecycler == null || mAdapter == null) return;
         mRecycler.post(() -> {
             if (mTurnOutputAnchored || mRecycler == null || mAdapter == null) return;
-            int index = firstGeneratedMessageIndexInCurrentTurn();
+            int index = firstModelOutputIndexInCurrentTurn();
             if (index < 0) return;
             RecyclerView.LayoutManager layoutManager = mRecycler.getLayoutManager();
             if (layoutManager instanceof LinearLayoutManager) {
@@ -1384,14 +1403,13 @@ public class HomeFragment extends Fragment {
         });
     }
 
-    private int firstGeneratedMessageIndexInCurrentTurn() {
-        for (int i = mMessages.size() - 1; i >= 0; i--) {
+    private int firstModelOutputIndexInCurrentTurn() {
+        int start = ChatTurnOrdering.currentTurnStart(mMessages);
+        for (int i = start + 1; i < mMessages.size(); i++) {
             ChatMessage message = mMessages.get(i);
-            if (message != null && message.type == ChatMessage.Type.USER) {
-                return i + 1 < mMessages.size() ? i + 1 : -1;
-            }
+            if (message != null && message.type == ChatMessage.Type.ASSISTANT) return i;
         }
-        return mMessages.isEmpty() ? -1 : 0;
+        return -1;
     }
 
     /** 删除当前 turn 范围内（USER 之后的）所有空的 / "…" 占位 ASSISTANT 气泡。
@@ -1402,9 +1420,7 @@ public class HomeFragment extends Fragment {
             ChatMessage m = mMessages.get(i);
             if (m.type == ChatMessage.Type.USER) break;
             if (m.type == ChatMessage.Type.ASSISTANT
-                    && (m.content == null
-                        || m.content.equals("…")
-                        || m.content.trim().isEmpty())
+                    && ChatTurnOrdering.isEmptyOrPlaceholder(m.content)
                     // 不删带有 thinking 内容的占位（流式 thinking 阶段 content 还空）
                     && (m.thinking == null || m.thinking.isEmpty())) {
                 mMessages.remove(i);
@@ -2267,13 +2283,11 @@ public class HomeFragment extends Fragment {
             @Override public void onToolUse(String name, String inputJson) {
                 postProviderUi(AssistantProvider.CODEX, viewGeneration, () -> {
                     mAdapter.addMessage(ChatMessage.toolUse(name, inputJson));
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
             @Override public void onToolResult(String name, String summary, String full) {
                 postProviderUi(AssistantProvider.CODEX, viewGeneration, () -> {
                     mAdapter.addMessage(ChatMessage.toolResult(name, summary, full));
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
             @Override public void onResult(boolean isError, String errMsg) {
@@ -2287,6 +2301,7 @@ public class HomeFragment extends Fragment {
                             mCurrentSessionId != null ? mCurrentSessionId : "");
                     }
                     mAdapter.collapseLastAssistantThinking();
+                    mAdapter.markLastAssistantOutputComplete();
                     mWaitingResponse = false;
                     updateStatus("● 就绪", 0xFF2E7D32);
                     FloatingStatusService.updateStatus("● 就绪", 0xFF2E7D32, "", false);
@@ -2297,7 +2312,6 @@ public class HomeFragment extends Fragment {
                     if (last != null && last.content != null && !last.content.isEmpty()) {
                         appendChatLog("Codex", last.content);
                     }
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
         };
@@ -2327,13 +2341,11 @@ public class HomeFragment extends Fragment {
             @Override public void onToolUse(String name, String inputJson) {
                 postProviderUi(AssistantProvider.CLAUDE, viewGeneration, () -> {
                     mAdapter.addMessage(ChatMessage.toolUse(name, inputJson));
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
             @Override public void onToolResult(String name, String summary, String full) {
                 postProviderUi(AssistantProvider.CLAUDE, viewGeneration, () -> {
                     mAdapter.addMessage(ChatMessage.toolResult(name, summary, full));
-                    scrollToCurrentTurnOutputStartOnce();
                 });
             }
             @Override public void onResult(String sid, boolean isError, String errMsg) {
@@ -2348,6 +2360,7 @@ public class HomeFragment extends Fragment {
                     }
                     mAdapter.collapseLastAssistantThinking();
                     mAdapter.collapseAllToolDetailsInLastTurn();
+                    mAdapter.markLastAssistantOutputComplete();
                     mWaitingResponse = false;
 
                     // 捕获 session_id：首次时绑定 + commit pending uploads
@@ -2382,6 +2395,7 @@ public class HomeFragment extends Fragment {
                     dropPlaceholder();
                     mAdapter.collapseLastAssistantThinking();
                     mAdapter.collapseAllToolDetailsInLastTurn();
+                    mAdapter.markLastAssistantOutputComplete();
                     mAdapter.addMessage(ChatMessage.system(
                             "● 进程已退出 (" + reason + ")，下条消息将自动恢复"));
                     mWaitingResponse = false;

@@ -26,12 +26,19 @@ def shell(serial, args, capture=True):
 
 def parse_current_activity(raw):
     text = raw.decode("utf-8", errors="replace")
-    match = re.search(r"mCurrentFocus=Window\{[^ ]+ [^ ]+ ([^/\s]+)/([^\s}]+)", text)
-    if not match:
-        match = re.search(r"mFocusedApp=ActivityRecord\{[^ ]+ [^ ]+ ([^/\s]+)/([^\s}]+)", text)
-    if not match:
-        return {"package": "", "activity": "", "raw": text[-800:]}
-    return {"package": match.group(1), "activity": match.group(2), "raw": text[-800:]}
+    focus = re.search(r"mCurrentFocus=Window\{[^ ]+ [^ ]+ ([^/\s]+)/([^\s}]+)", text)
+    focused_app = re.search(r"mFocusedApp=ActivityRecord\{[^ ]+ [^ ]+ ([^/\s]+)/([^\s}]+)", text)
+    package_name = focus.group(1) if focus else (focused_app.group(1) if focused_app else "")
+    activity_name = focus.group(2) if focus else (focused_app.group(2) if focused_app else "")
+    return {
+        "package": package_name,
+        "activity": activity_name,
+        "focus_package": focus.group(1) if focus else "",
+        "focus_activity": focus.group(2) if focus else "",
+        "focused_app_package": focused_app.group(1) if focused_app else "",
+        "focused_app_activity": focused_app.group(2) if focused_app else "",
+        "raw": text[-800:],
+    }
 
 
 def encode_input_text(value):

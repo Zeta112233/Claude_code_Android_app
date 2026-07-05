@@ -5,9 +5,11 @@ import android.content.ClipboardManager;
 import android.content.Context;
 import android.os.Handler;
 import android.os.Looper;
+import android.util.Log;
 
 import androidx.annotation.NonNull;
 
+import com.portalagent.apitools.TermuxApiCatalog;
 import com.termux.api.apis.BatteryStatusAPI;
 import com.termux.api.apis.CameraInfoAPI;
 import com.termux.api.apis.SensorAPI;
@@ -19,6 +21,7 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.util.concurrent.CountDownLatch;
@@ -43,6 +46,8 @@ import java.util.concurrent.atomic.AtomicReference;
  *   /clipboard → clipboard plain text    (matches termux-clipboard-get output)
  */
 public class ApiHttpBridgeServer {
+
+    private static final String TAG = "ApiHttpBridgeServer";
 
     /** Port the HTTP bridge listens on (loopback only). */
     static final int PORT = 17681;
@@ -77,10 +82,11 @@ public class ApiHttpBridgeServer {
 
     private void runServer() {
         while (mRunning) {
-            try (ServerSocket server = new ServerSocket(PORT, 10,
-                    InetAddress.getByName("127.0.0.1"))) {
+            try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
+                server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 10);
                 mServerSocket = server;
+                Log.i(TAG, "API bridge listening on 127.0.0.1:" + PORT);
                 while (mRunning) {
                     Socket client = server.accept();
                     Thread ct = new Thread(() -> handleClient(client), "api-bridge-req");
@@ -89,6 +95,7 @@ public class ApiHttpBridgeServer {
                 }
             } catch (IOException e) {
                 if (!mRunning) break;
+                Log.w(TAG, "API bridge bind/listen failed, retrying", e);
                 // Retry after delay (e.g., if port is temporarily in use)
                 try { Thread.sleep(5000); } catch (InterruptedException ignored) { break; }
             }
@@ -118,12 +125,17 @@ public class ApiHttpBridgeServer {
             if (path.contains("?")) path = path.substring(0, path.indexOf('?'));
 
             dispatch(path, sock.getOutputStream());
-        } catch (IOException ignored) {}
+        } catch (Throwable t) {
+            Log.w(TAG, "API bridge request failed", t);
+        }
     }
 
     private void dispatch(String path, OutputStream out) throws IOException {
         try {
             switch (path) {
+                case "/":
+                    sendResponse(out, 200, "application/json", getBridgeIndexJson());
+                    break;
                 case "/battery":
                     sendResponse(out, 200, "application/json",
                         BatteryStatusAPI.getBatteryStatusJson(mActivity));
@@ -144,10 +156,16 @@ public class ApiHttpBridgeServer {
                     // Return plain text to match termux-clipboard-get output format
                     sendResponse(out, 200, "text/plain; charset=utf-8", getClipboardText());
                     break;
+                case "/termux-api/catalog":
+                case "/api/catalog":
+                    sendResponse(out, 200, "application/json",
+                        TermuxApiCatalog.toJsonString());
+                    break;
                 default:
                     sendResponse(out, 404, "application/json",
                         "{\"error\":\"Unknown endpoint\"," +
-                        "\"available\":[\"/battery\",\"/camera\",\"/sensors\",\"/wifi\",\"/clipboard\"]}");
+                        "\"catalog\":\"/termux-api/catalog\"," +
+                        "\"available\":" + TermuxApiCatalog.httpEndpointsJsonArray().toString() + "}");
             }
         } catch (Throwable t) {
             sendResponse(out, 500, "application/json",
@@ -180,6 +198,16 @@ public class ApiHttpBridgeServer {
         });
         try { latch.await(3, TimeUnit.SECONDS); } catch (InterruptedException ignored) {}
         return result.get();
+    }
+
+    private String getBridgeIndexJson() {
+        return "{\"name\":\"PortalAgent Android API bridge\","
+            + "\"port\":" + PORT + ","
+            + "\"loopback_only\":true,"
+            + "\"available\":" + TermuxApiCatalog.httpEndpointsJsonArray().toString() + ","
+            + "\"policy\":\"HTTP direct calls expose only low-risk local read endpoints. "
+            + "Full Termux:API support is embedded behind the TermuxApiReceiver intent path "
+            + "and Android permission flow.\"}";
     }
 
     // -------------------------------------------------------------------------

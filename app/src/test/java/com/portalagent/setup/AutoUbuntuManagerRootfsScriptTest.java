@@ -105,4 +105,33 @@ public class AutoUbuntuManagerRootfsScriptTest {
 
         assertTrue(script.contains("PortalAgent environment setup successful"));
     }
+
+    @Test
+    public void environmentRepairLauncherExitsUbuntuWhenAndroidScriptIsHidden() {
+        String launcher = AutoUbuntuManager.buildSetupScriptLauncherShellForTest(
+            "/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh",
+            "/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh.test.launching",
+            true);
+
+        assertTrue(launcher.contains("__pa_script='/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh'"));
+        assertTrue(launcher.contains("__pa_guard='/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh.test.launching'"));
+        assertTrue(launcher.contains("if [ -e \"$__pa_guard\" ]; then :;"));
+        assertTrue(launcher.contains("elif [ -f \"$__pa_script\" ]; then"));
+        assertTrue(launcher.contains("touch \"$__pa_guard\""));
+        assertTrue(launcher.contains("bash \"$__pa_script\""));
+        assertTrue(launcher.contains("leaving Ubuntu and retrying from Termux"));
+        assertTrue(launcher.contains("exit;"));
+    }
+
+    @Test
+    public void environmentRepairRetryDoesNotExitOrRerunWhenGuardExists() {
+        String launcher = AutoUbuntuManager.buildSetupScriptLauncherShellForTest(
+            "/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh",
+            "/data/user/0/com.portalagent/files/home/.ubuntu-setup.sh.test.launching",
+            false);
+
+        assertTrue(launcher.contains("if [ -e \"$__pa_guard\" ]; then :;"));
+        assertTrue(launcher.contains("open the Termux tab and retry environment repair"));
+        assertFalse(launcher.contains("exit;"));
+    }
 }

@@ -241,6 +241,8 @@
     <string name="api_tools_button_wifi">Wi-Fi 连接信息</string>
     <string name="api_tools_button_clipboard">读取剪贴板</string>
     <string name="api_tools_button_clear">清空输出</string>
+    <string name="share_file_chooser_title">Share with</string>
+    <string name="keep_alive_service">Keeps PortalAgent:API running in the background for faster startup of device API commands.</string>
 
     <string name="api_self_check_title">设备 API 自检（点击打开工具）</string>
     <string name="api_self_check_item">%1$s: %2$s</string>

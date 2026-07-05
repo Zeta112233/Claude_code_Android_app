@@ -2,4 +2,4 @@
 *.tar.xz
 *.tar.gz
 *.tar.zst
-!ubuntu-claude-aarch64-20260512.tar.xz
+!ubuntu-claude-aarch64-20260521.tar.xz

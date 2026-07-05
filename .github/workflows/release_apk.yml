@@ -22,11 +22,13 @@ jobs:
     timeout-minutes: 30
 
     env:
-      SNAPSHOT_RELEASE_TAG: snapshot-v2   # 含 agentserver v0.48.1，2026-05-12 打包
+      SNAPSHOT_RELEASE_TAG: snapshot-v3
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          lfs: true
 
       - name: Set up JDK 17
         uses: actions/setup-java@v4
@@ -38,21 +40,32 @@ jobs:
       - name: Make gradlew executable
         run: chmod +x ./gradlew
 
-      # 从 snapshot-v1 release 下载 Ubuntu + Claude 快照（被 .gitignore 排除，不在源码中）
-      # 失败不致命：APK 仍可构建，只是首次启动时需要联网下载快照
-      - name: Download Ubuntu + Claude snapshot from snapshot-v1 release
+      # 确保 release APK 内置 Ubuntu + Claude 快照；缺失时从 release 下载，仍失败则阻断发布。
+      - name: Ensure Ubuntu + Claude snapshot asset
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          set -e
           mkdir -p app/src/main/assets/ubuntu-snapshot
-          if gh release download "$SNAPSHOT_RELEASE_TAG" \
-               --repo "${{ github.repository }}" \
-               --pattern '*.tar.xz' \
-               --dir app/src/main/assets/ubuntu-snapshot/ ; then
-            echo "✓ Snapshot downloaded:"
+          SNAPSHOT="$(find app/src/main/assets/ubuntu-snapshot -name '*.tar.xz' -size +100M | head -1 || true)"
+          if [ -n "$SNAPSHOT" ]; then
+            echo "✓ Snapshot already present from Git LFS: $SNAPSHOT"
             ls -lh app/src/main/assets/ubuntu-snapshot/
           else
-            echo "::warning::未能从 $SNAPSHOT_RELEASE_TAG 拉取快照，APK 将不内置离线快照（首次安装需联网）"
+            echo "[*] No valid local snapshot found; downloading $SNAPSHOT_RELEASE_TAG..."
+            rm -f app/src/main/assets/ubuntu-snapshot/*.tar.xz
+            gh release download "$SNAPSHOT_RELEASE_TAG" \
+              --repo "${{ github.repository }}" \
+              --pattern '*.tar.xz' \
+              --dir app/src/main/assets/ubuntu-snapshot/
+            SNAPSHOT="$(find app/src/main/assets/ubuntu-snapshot -name '*.tar.xz' -size +100M | head -1 || true)"
+            if [ -z "$SNAPSHOT" ]; then
+              echo "::error::Ubuntu snapshot asset is missing; refusing to publish a slim APK."
+              ls -lh app/src/main/assets/ubuntu-snapshot/ || true
+              exit 1
+            fi
+            echo "✓ Snapshot downloaded: $SNAPSHOT"
+            ls -lh app/src/main/assets/ubuntu-snapshot/
           fi
 
       - name: Build debug APK

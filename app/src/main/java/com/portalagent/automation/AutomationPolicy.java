@@ -36,10 +36,19 @@ public final class AutomationPolicy {
 
     public static JSONObject redactArguments(String toolName, JSONObject args) throws Exception {
         JSONObject copy = args == null ? new JSONObject() : new JSONObject(args.toString());
-        if (("ui.input_text".equals(toolName) || "adb.input_text".equals(toolName)) && copy.has("text")) {
+        if (isInputTextTool(toolName) && copy.has("text")) {
             copy.put("text", "[redacted]");
         }
         return copy;
+    }
+
+    public static String redactResultSummary(String toolName, String resultSummary) {
+        String summary = resultSummary == null ? "" : resultSummary;
+        if (!isInputTextTool(toolName)) return summary;
+        if (summary.startsWith("started;") || summary.startsWith("Tool timeout")) {
+            return summary;
+        }
+        return "[redacted]";
     }
 
     public static boolean hasStableSelector(ActionStep step) {
@@ -65,6 +74,10 @@ public final class AutomationPolicy {
 
     private static boolean isCoordinateTap(String toolName) {
         return "ui.tap".equals(toolName) || "adb.tap".equals(toolName);
+    }
+
+    private static boolean isInputTextTool(String toolName) {
+        return "ui.input_text".equals(toolName) || "adb.input_text".equals(toolName);
     }
 
     private static boolean hasStableAnchor(UiSelector selector) {

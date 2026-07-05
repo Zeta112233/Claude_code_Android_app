@@ -4,6 +4,7 @@ import com.termux.app.TermuxActivity;
 import com.portalagent.provider.AssistantProvider;
 import com.portalagent.provider.ProviderProfile;
 import com.portalagent.provider.ProviderSettingsStore;
+import com.portalagent.settings.WorkspaceAccessSettingsStore.AppCapability;
 import android.content.pm.ApplicationInfo;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
@@ -177,17 +178,22 @@ public class WorkspaceAccessSettingsFragment extends Fragment {
 
     private View appRow(AppEntry app) {
         LinearLayout row = new LinearLayout(requireContext());
-        row.setOrientation(LinearLayout.HORIZONTAL);
-        row.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        row.setOrientation(LinearLayout.VERTICAL);
         row.setPadding(0, dp(8), 0, dp(8));
         row.setBackgroundResource(android.R.drawable.list_selector_background);
+
+        LinearLayout header = new LinearLayout(requireContext());
+        header.setOrientation(LinearLayout.HORIZONTAL);
+        header.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        header.setClickable(true);
+        header.setFocusable(true);
 
         ImageView icon = new ImageView(requireContext());
         icon.setImageDrawable(app.icon);
         icon.setImportantForAccessibility(View.IMPORTANT_FOR_ACCESSIBILITY_NO);
         LinearLayout.LayoutParams iconParams = new LinearLayout.LayoutParams(dp(36), dp(36));
         iconParams.setMargins(0, 0, dp(12), 0);
-        row.addView(icon, iconParams);
+        header.addView(icon, iconParams);
 
         LinearLayout textColumn = new LinearLayout(requireContext());
         textColumn.setOrientation(LinearLayout.VERTICAL);
@@ -202,19 +208,54 @@ public class WorkspaceAccessSettingsFragment extends Fragment {
         packageName.setTextSize(11);
         textColumn.addView(label);
         textColumn.addView(packageName);
-        row.addView(textColumn, new LinearLayout.LayoutParams(
+        header.addView(textColumn, new LinearLayout.LayoutParams(
             0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
 
-        CheckBox box = new CheckBox(requireContext());
-        box.setChecked(store.isAppAllowed(app.packageName));
-        box.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
+        CheckBox allBox = new CheckBox(requireContext());
+        allBox.setText("全部");
+        allBox.setTextColor(getResources().getColor(R.color.app_text_secondary));
+        allBox.setTextSize(11);
+        allBox.setChecked(store.isAppFullyAllowed(app.packageName));
+        allBox.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
             store.setAppAllowed(app.packageName, isChecked);
             updateAllowedCount();
+            renderApps();
         });
-        row.setOnClickListener(v -> box.setChecked(!box.isChecked()));
-        row.addView(box, new LinearLayout.LayoutParams(
+        header.setOnClickListener(v -> allBox.setChecked(!allBox.isChecked()));
+        header.addView(allBox, new LinearLayout.LayoutParams(
             ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        row.addView(header);
+
+        LinearLayout capabilityRow = new LinearLayout(requireContext());
+        capabilityRow.setOrientation(LinearLayout.HORIZONTAL);
+        capabilityRow.setGravity(android.view.Gravity.CENTER_VERTICAL);
+        capabilityRow.setPadding(dp(48), dp(4), 0, 0);
+        addCapabilityBox(capabilityRow, app, AppCapability.LAUNCH, "打开");
+        addCapabilityBox(capabilityRow, app, AppCapability.OBSERVE, "观察");
+        addCapabilityBox(capabilityRow, app, AppCapability.INTERACT, "交互");
+        addCapabilityBox(capabilityRow, app, AppCapability.ADB, "ADB");
+        row.addView(capabilityRow);
         return row;
+    }
+
+    private void addCapabilityBox(LinearLayout parent, AppEntry app,
+                                  AppCapability capability, String label) {
+        CheckBox box = new CheckBox(requireContext());
+        box.setText(label);
+        box.setTextColor(getResources().getColor(R.color.app_text_secondary));
+        box.setTextSize(11);
+        box.setMinWidth(0);
+        box.setMinimumWidth(0);
+        box.setPadding(0, 0, dp(4), 0);
+        box.setChecked(store.isAppAllowed(app.packageName, capability));
+        box.setOnCheckedChangeListener((CompoundButton buttonView, boolean isChecked) -> {
+            store.setAppCapabilityAllowed(app.packageName, capability, isChecked);
+            updateAllowedCount();
+            renderApps();
+        });
+        parent.addView(box, new LinearLayout.LayoutParams(
+            0, ViewGroup.LayoutParams.WRAP_CONTENT, 1));
     }
 
     private List<AppEntry> loadLaunchableApps() {

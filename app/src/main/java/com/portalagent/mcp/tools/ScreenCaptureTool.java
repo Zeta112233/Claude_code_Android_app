@@ -5,6 +5,7 @@ import android.util.Base64;
 
 import com.portalagent.mcp.McpTool;
 import com.portalagent.mcp.ScreenCaptureService;
+import com.portalagent.mcp.WorkspaceAccessPolicy;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -38,6 +39,7 @@ public class ScreenCaptureTool implements McpTool {
 
     @Override
     public String call(JSONObject args, Context context) throws Exception {
+        WorkspaceAccessPolicy.enforceAccessibilityForeground(context, getName());
         if (!ScreenCaptureService.isRunning()) {
             return textContent("Screen capture permission not granted. " +
                 "Please tap '授权截图' in the app's Home tab, then try again.");

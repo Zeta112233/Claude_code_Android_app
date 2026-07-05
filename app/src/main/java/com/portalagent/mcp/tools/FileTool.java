@@ -4,6 +4,7 @@ import android.content.Context;
 import android.util.Base64;
 
 import com.portalagent.mcp.McpTool;
+import com.portalagent.mcp.WorkspaceAccessPolicy;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -78,17 +79,17 @@ public class FileTool implements McpTool {
     @Override
     public String call(JSONObject args, Context context) throws Exception {
         switch (mKind) {
-            case CHECK_EXISTS: return callCheckExists(args);
-            case LIST:         return callList(args);
-            default:           return callRead(args);
+            case CHECK_EXISTS: return callCheckExists(args, context);
+            case LIST:         return callList(args, context);
+            default:           return callRead(args, context);
         }
     }
 
     // ─────────────────────────────────────────────────────────────────────────
 
-    private String callCheckExists(JSONObject args) throws Exception {
+    private String callCheckExists(JSONObject args, Context context) throws Exception {
         String path = args.getString("path");
-        File f = new File(path);
+        File f = WorkspaceAccessPolicy.resolveAllowedFile(context, path);
 
         JSONObject result = new JSONObject();
         result.put("ok", true);
@@ -101,10 +102,10 @@ public class FileTool implements McpTool {
         return textContent(result.toString(2));
     }
 
-    private String callList(JSONObject args) throws Exception {
+    private String callList(JSONObject args, Context context) throws Exception {
         String path = args.getString("path");
+        File dir = WorkspaceAccessPolicy.resolveAllowedFile(context, path);
         boolean showHidden = args.optBoolean("show_hidden", false);
-        File dir = new File(path);
 
         if (!dir.exists())     return textContent("{\"ok\":false,\"error\":\"Path does not exist: " + path + "\"}");
         if (!dir.isDirectory())return textContent("{\"ok\":false,\"error\":\"Not a directory: " + path + "\"}");
@@ -135,12 +136,12 @@ public class FileTool implements McpTool {
         return textContent(result.toString(2));
     }
 
-    private String callRead(JSONObject args) throws Exception {
+    private String callRead(JSONObject args, Context context) throws Exception {
         String path = args.getString("path");
+        File f = WorkspaceAccessPolicy.resolveAllowedFile(context, path);
         int maxMb = Math.min(args.optInt("max_size_mb", DEFAULT_MAX_MB), HARD_MAX_MB);
         long maxBytes = (long) maxMb * 1024 * 1024;
 
-        File f = new File(path);
         if (!f.exists())   return textContent("{\"ok\":false,\"error\":\"File not found: " + path + "\"}");
         if (f.isDirectory()) return textContent("{\"ok\":false,\"error\":\"Path is a directory: " + path + "\"}");
         if (f.length() > maxBytes)

@@ -14,12 +14,23 @@ import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.OutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketTimeoutException;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.SynchronousQueue;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * MCP Streamable HTTP server on 127.0.0.1:8765.
@@ -37,11 +48,22 @@ public class McpHttpServer {
 
     private static final String TAG = "McpHttpServer";
     static final int PORT = 8765;
+    private static final int CLIENT_SOCKET_TIMEOUT_MS = 15000;
+    private static final int MAX_TOOL_THREADS = 4;
+    private static final long DEFAULT_TOOL_TIMEOUT_MS = 8000L;
+    private static final long UI_TREE_TIMEOUT_MS = 6000L;
+    private static final long UI_GESTURE_TIMEOUT_MS = 7000L;
+    private static final long UI_CLICK_TEXT_TIMEOUT_MS = 9000L;
+    private static final long UI_INPUT_TEXT_TIMEOUT_MS = 12000L;
+    private static final long SCREEN_CAPTURE_TIMEOUT_MS = 5000L;
+    private static final long CAMERA_TIMEOUT_MS = 25000L;
+    private static final long FILE_TIMEOUT_MS = 15000L;
 
     private final Context mContext;
     private final AuditLogger mAudit;
     private final ToolTraceStore mTraceStore;
     private final List<McpTool> mTools = new ArrayList<>();
+    private final ThreadPoolExecutor mToolExecutor;
 
     private volatile boolean mRunning = false;
     private volatile ServerSocket mServerSocket;
@@ -50,6 +72,8 @@ public class McpHttpServer {
         mContext = context.getApplicationContext();
         mAudit   = audit;
         mTraceStore = new ToolTraceStore(mContext);
+        mToolExecutor = new ThreadPoolExecutor(0, MAX_TOOL_THREADS, 30L, TimeUnit.SECONDS,
+            new SynchronousQueue<Runnable>(), new McpToolThreadFactory());
     }
 
     public void registerTool(McpTool tool) {
@@ -70,6 +94,7 @@ public class McpHttpServer {
         if (ss != null) {
             try { ss.close(); } catch (IOException ignored) {}
         }
+        mToolExecutor.shutdownNow();
     }
 
     // ─────────────────────────────────────────────────────────────────────────
@@ -78,9 +103,9 @@ public class McpHttpServer {
 
     private void runServer() {
         while (mRunning) {
-            try (ServerSocket server = new ServerSocket(PORT, 10,
-                    InetAddress.getByName("127.0.0.1"))) {
+            try (ServerSocket server = new ServerSocket()) {
                 server.setReuseAddress(true);
+                server.bind(new InetSocketAddress(InetAddress.getByName("127.0.0.1"), PORT), 10);
                 mServerSocket = server;
                 Log.i(TAG, "MCP server listening on 127.0.0.1:" + PORT);
                 while (mRunning) {
@@ -91,6 +116,7 @@ public class McpHttpServer {
                 }
             } catch (IOException e) {
                 if (!mRunning) break;
+                Log.w(TAG, "MCP server bind/listen failed, retrying", e);
                 try { Thread.sleep(5000); } catch (InterruptedException ignored) { break; }
             }
         }
@@ -102,6 +128,7 @@ public class McpHttpServer {
 
     private void handleClient(Socket sock) {
         try (Socket s = sock) {
+            s.setSoTimeout(CLIENT_SOCKET_TIMEOUT_MS);
             BufferedReader reader = new BufferedReader(
                 new InputStreamReader(s.getInputStream(), StandardCharsets.UTF_8));
             OutputStream out = s.getOutputStream();
@@ -146,6 +173,8 @@ public class McpHttpServer {
 
             handleJsonRpc(bodyStr, out);
 
+        } catch (SocketTimeoutException e) {
+            Log.w(TAG, "Request timed out while reading: " + e.getMessage());
         } catch (Exception e) {
             Log.w(TAG, "Request error: " + e.getMessage());
         }
@@ -244,8 +273,39 @@ public class McpHttpServer {
         String taskId = args.optString("task_id", "");
         boolean success = true;
         String contentStr;
+        long timeoutMs = timeoutMsForTool(toolName);
+        appendToolTrace(toolName, args, taskId, false,
+            "started; timeout_ms=" + timeoutMs);
+
+        JSONObject callArgs = new JSONObject(args.toString());
+        Future<String> future;
         try {
-            contentStr = tool.call(args, mContext);
+            future = mToolExecutor.submit(() -> tool.call(callArgs, mContext));
+        } catch (RejectedExecutionException e) {
+            success = false;
+            contentStr = errorContent("MCP tool executor is busy. " +
+                "A previous tool call may still be stuck; retry after it clears.");
+            mAudit.log(toolName, taskId, false, contentStr);
+            appendToolTrace(toolName, args, taskId, false, contentStr);
+            return toolResultResponse(id, contentStr, false);
+        }
+
+        try {
+            contentStr = future.get(timeoutMs, TimeUnit.MILLISECONDS);
+        } catch (TimeoutException e) {
+            success = false;
+            future.cancel(true);
+            contentStr = errorContent("Tool timeout after " + timeoutMs + "ms: "
+                + toolName + ". The MCP server returned early so the client can recover.");
+            Log.w(TAG, "Tool timed out: " + toolName + " after " + timeoutMs + "ms");
+        } catch (InterruptedException e) {
+            success = false;
+            future.cancel(true);
+            Thread.currentThread().interrupt();
+            contentStr = errorContent("Tool interrupted: " + toolName);
+        } catch (ExecutionException e) {
+            success = false;
+            contentStr = errorContent("Tool error: " + rootMessage(e));
         } catch (Exception e) {
             success = false;
             contentStr = errorContent("Tool error: " + e.getMessage());
@@ -253,6 +313,10 @@ public class McpHttpServer {
         mAudit.log(toolName, taskId, success, success ? null : contentStr);
         appendToolTrace(toolName, args, taskId, success, contentStr);
 
+        return toolResultResponse(id, contentStr, success);
+    }
+
+    private static String toolResultResponse(Object id, String contentStr, boolean success) throws Exception {
         JSONObject result = new JSONObject();
         result.put("content", new JSONArray(contentStr));
         result.put("isError", !success);
@@ -277,8 +341,8 @@ public class McpHttpServer {
             if (McpAccessibilityService.isRunning()) {
                 McpAccessibilityService service = McpAccessibilityService.getInstance();
                 if (service != null) {
-                    packageName = service.getCurrentPackage();
-                    activityName = service.getCurrentActivity();
+                    packageName = service.getEffectiveForegroundPackage(toolName);
+                    activityName = service.getEffectiveForegroundActivity(toolName);
                 }
             }
             ToolTraceEvent event = new ToolTraceEvent(UUID.randomUUID().toString(), System.currentTimeMillis(),
@@ -296,6 +360,29 @@ public class McpHttpServer {
             return summary.substring(0, 237) + "...";
         }
         return summary;
+    }
+
+    static long timeoutMsForTool(String toolName) {
+        if ("ui.get_accessibility_tree".equals(toolName)) return UI_TREE_TIMEOUT_MS;
+        if ("ui.tap".equals(toolName) || "ui.swipe".equals(toolName)) return UI_GESTURE_TIMEOUT_MS;
+        if ("ui.click_text".equals(toolName)) return UI_CLICK_TEXT_TIMEOUT_MS;
+        if ("ui.input_text".equals(toolName)) return UI_INPUT_TEXT_TIMEOUT_MS;
+        if ("screen.capture".equals(toolName)) return SCREEN_CAPTURE_TIMEOUT_MS;
+        if ("camera.take_photo".equals(toolName)) return CAMERA_TIMEOUT_MS;
+        if (toolName != null && toolName.startsWith("file.")) return FILE_TIMEOUT_MS;
+        return DEFAULT_TOOL_TIMEOUT_MS;
+    }
+
+    private static String rootMessage(Throwable e) {
+        Throwable t = e;
+        if (t instanceof ExecutionException && t.getCause() != null) {
+            t = t.getCause();
+        }
+        String message = t == null ? "" : t.getMessage();
+        if (message == null || message.length() == 0) {
+            return String.valueOf(t);
+        }
+        return message;
     }
 
     private static String successResponse(Object id, JSONObject result) throws Exception {
@@ -355,5 +442,16 @@ public class McpHttpServer {
             out.write(header.toString().getBytes(StandardCharsets.UTF_8));
         }
         out.flush();
+    }
+
+    private static final class McpToolThreadFactory implements ThreadFactory {
+        private final AtomicInteger nextId = new AtomicInteger(1);
+
+        @Override
+        public Thread newThread(Runnable r) {
+            Thread t = new Thread(r, "mcp-tool-" + nextId.getAndIncrement());
+            t.setDaemon(true);
+            return t;
+        }
     }
 }

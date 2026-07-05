@@ -544,6 +544,10 @@ public class AutoUbuntuManager {
         return (value == null ? "" : value).replace("'", "'\\''");
     }
 
+    private static String shellQuoted(String value) {
+        return "'" + shellSingleQuoteForScript(value) + "'";
+    }
+
     /** 等待 assets 准备完毕，然后向终端写入安装脚本命令。 */
     private void launchSetupScript(TerminalSession session) {
         // 每次启动都写入/更新 provider instructions，让 agents 知道它们的 Android 能力
@@ -567,7 +571,7 @@ public class AutoUbuntuManager {
         // 脚本写入临时文件再执行，避免超长单行命令超出 pty 输入缓冲区（N_TTY_BUF_SIZE=4096）被截断
         String scriptPath = writeScriptToFile();
         if (scriptPath != null) {
-            session.write("bash '" + scriptPath + "'\n");
+            launchSetupScriptFromCurrentTerminal(session, scriptPath);
         } else {
             session.write(buildUbuntuCommand()); // 兜底（文件写入失败时）
         }
@@ -577,6 +581,41 @@ public class AutoUbuntuManager {
      * 将安装脚本写入 $HOME/.ubuntu-setup.sh 并返回绝对路径。
      * 失败时返回 null。
      */
+    private void launchSetupScriptFromCurrentTerminal(TerminalSession session, String scriptPath) {
+        String guardPath = scriptPath + "." + System.currentTimeMillis() + ".launching";
+        session.write(buildSetupScriptLauncherShell(scriptPath, guardPath, true));
+
+        Thread t = new Thread(() -> {
+            try { Thread.sleep(1200); } catch (InterruptedException ignored) { return; }
+            if (session.isRunning()) {
+                session.write(buildSetupScriptLauncherShell(scriptPath, guardPath, false));
+            }
+        }, "ubuntu-setup-retry");
+        t.setDaemon(true);
+        t.start();
+    }
+
+    private static String buildSetupScriptLauncherShell(String scriptPath, String guardPath,
+                                                       boolean exitIfScriptMissing) {
+        return "__pa_script=" + shellQuoted(scriptPath) + "; "
+            + "__pa_guard=" + shellQuoted(guardPath) + "; "
+            + "if [ -e \"$__pa_guard\" ]; then :; "
+            + "elif [ -f \"$__pa_script\" ]; then "
+            + "touch \"$__pa_guard\" 2>/dev/null || true; "
+            + "bash \"$__pa_script\"; "
+            + "else "
+            + "echo '[*] PortalAgent setup script is not visible in this shell; leaving Ubuntu and retrying from Termux...'; "
+            + (exitIfScriptMissing
+                ? "exit; "
+                : "echo '[!] PortalAgent setup script still is not visible; open the Termux tab and retry environment repair.'; ")
+            + "fi\n";
+    }
+
+    static String buildSetupScriptLauncherShellForTest(String scriptPath, String guardPath,
+                                                       boolean exitIfScriptMissing) {
+        return buildSetupScriptLauncherShell(scriptPath, guardPath, exitIfScriptMissing);
+    }
+
     @Nullable
     private String writeScriptToFile() {
         File scriptFile = new File(mActivity.getFilesDir(), "home/.ubuntu-setup.sh");
@@ -984,6 +1023,9 @@ public class AutoUbuntuManager {
           .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/clipboard\\n' \"$_bp\" ")
           .append("> \"$_ubr/usr/local/bin/termux-clipboard-get\" && ")
           .append("chmod +x \"$_ubr/usr/local/bin/termux-clipboard-get\" 2>/dev/null; ")
+          .append("printf '#!/bin/sh\\ncurl -sf http://127.0.0.1:%s/termux-api/catalog\\n' \"$_bp\" ")
+          .append("> \"$_ubr/usr/local/bin/termux-api-catalog\" && ")
+          .append("chmod +x \"$_ubr/usr/local/bin/termux-api-catalog\" 2>/dev/null; ")
           .append("echo \"[*] Claude + Codex + AgentServer + Loom setup + capabilities ready.\"; ")
           .append("fi; fi; ");
 

@@ -4,6 +4,7 @@ import android.content.Context;
 
 import com.portalagent.mcp.AdbCompanionClient;
 import com.portalagent.mcp.McpTool;
+import com.portalagent.mcp.WorkspaceAccessPolicy;
 
 import org.json.JSONArray;
 import org.json.JSONObject;
@@ -107,6 +108,10 @@ public class AdbTool implements McpTool {
     public String call(JSONObject args, Context context) throws Exception {
         if (kind == Kind.GET_STATUS) {
             return statusContent(args);
+        }
+        if (kind != Kind.CURRENT_ACTIVITY) {
+            JSONObject currentActivity = client.call("current_activity", args);
+            WorkspaceAccessPolicy.enforceAdbForeground(context, getName(), currentActivity);
         }
 
         JSONObject response = client.call(actionName(), args);

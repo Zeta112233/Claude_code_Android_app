@@ -365,7 +365,7 @@ Layer 1: Termux 端工具（proot, proot-distro, libtalloc, file）
 
 Layer 2: Ubuntu rootfs（约 200 MB 压缩）
          ① APK 内置快照（assets/ubuntu-snapshot/，含预装 Claude+AgentServer）✓ 离线
-         ② GitHub Release 快照下载（snapshot-v2 tag）  ← 联网
+         ② GitHub Release 快照下载（snapshot-v3 tag）  ← 联网
          ③ proot-distro install ubuntu（裸 Ubuntu base）  ← 联网
 
 Layer 3: 容器内组件

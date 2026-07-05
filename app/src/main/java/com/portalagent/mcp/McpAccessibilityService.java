@@ -2,6 +2,7 @@ package com.portalagent.mcp;
 
 import android.accessibilityservice.AccessibilityService;
 import android.accessibilityservice.GestureDescription;
+import android.util.DisplayMetrics;
 import android.graphics.Path;
 import android.graphics.Rect;
 import android.os.Build;
@@ -36,6 +37,11 @@ public class McpAccessibilityService extends AccessibilityService {
 
     private volatile String mCurrentPackage  = "";
     private volatile String mCurrentActivity = "";
+    private volatile String mLastApplicationPackage = "";
+    private volatile String mLastApplicationActivity = "";
+
+    private static final int CLICK_TEXT_MAX_VISITED_NODES = 4000;
+    private static final long CLICK_TEXT_TIMEOUT_MS = 2500L;
 
     // ── Static access ─────────────────────────────────────────────────────────
 
@@ -56,8 +62,14 @@ public class McpAccessibilityService extends AccessibilityService {
         if (event.getEventType() == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             CharSequence pkg = event.getPackageName();
             CharSequence cls = event.getClassName();
-            if (pkg != null) mCurrentPackage  = pkg.toString();
-            if (cls != null) mCurrentActivity = cls.toString();
+            String packageName = pkg == null ? "" : pkg.toString();
+            String activityName = cls == null ? "" : cls.toString();
+            if (pkg != null) mCurrentPackage = packageName;
+            if (cls != null) mCurrentActivity = activityName;
+            if (isTrackableApplicationPackage(packageName, activityName)) {
+                mLastApplicationPackage = packageName;
+                mLastApplicationActivity = activityName;
+            }
         }
     }
 
@@ -74,6 +86,66 @@ public class McpAccessibilityService extends AccessibilityService {
 
     public String getCurrentPackage()  { return mCurrentPackage; }
     public String getCurrentActivity() { return mCurrentActivity; }
+    public String getLastApplicationPackage() { return mLastApplicationPackage; }
+    public String getLastApplicationActivity() { return mLastApplicationActivity; }
+
+    public String getEffectiveForegroundPackage() {
+        return WorkspaceAccessPolicy.effectiveAccessibilityPackage(
+            this, mCurrentPackage, mLastApplicationPackage);
+    }
+
+    public String getEffectiveForegroundPackage(String toolName) {
+        return WorkspaceAccessPolicy.effectiveAccessibilityPackageForTool(
+            this, toolName, mCurrentPackage, mCurrentActivity, mLastApplicationPackage,
+            getActiveWindowPackage());
+    }
+
+    public String getEffectiveForegroundActivity() {
+        String effectivePackage = getEffectiveForegroundPackage();
+        if (effectivePackage.equals(mLastApplicationPackage)
+            && !effectivePackage.equals(mCurrentPackage)) {
+            return mLastApplicationActivity;
+        }
+        return mCurrentActivity;
+    }
+
+    public String getEffectiveForegroundActivity(String toolName) {
+        String effectivePackage = getEffectiveForegroundPackage(toolName);
+        if (effectivePackage.equals(mLastApplicationPackage)
+            && !effectivePackage.equals(mCurrentPackage)) {
+            return mLastApplicationActivity;
+        }
+        return mCurrentActivity;
+    }
+
+    public String getActiveWindowPackage() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return "";
+        try {
+            CharSequence packageName = root.getPackageName();
+            return packageName == null ? "" : packageName.toString();
+        } finally {
+            root.recycle();
+        }
+    }
+
+    public Rect getDisplayBounds() {
+        DisplayMetrics metrics = getResources().getDisplayMetrics();
+        return new Rect(0, 0, metrics.widthPixels, metrics.heightPixels);
+    }
+
+    public Rect getActiveWindowBounds() {
+        AccessibilityNodeInfo root = getRootInActiveWindow();
+        if (root == null) return getDisplayBounds();
+        try {
+            Rect bounds = new Rect();
+            root.getBoundsInScreen(bounds);
+            if (bounds.isEmpty()) return getDisplayBounds();
+            return bounds;
+        } finally {
+            root.recycle();
+        }
+    }
 
     public ScreenFingerprint currentScreenFingerprint() {
         AccessibilityNodeInfo root = getRootInActiveWindow();
@@ -114,6 +186,7 @@ public class McpAccessibilityService extends AccessibilityService {
      */
     @RequiresApi(api = Build.VERSION_CODES.N)
     public void tap(float x, float y) throws Exception {
+        validatePointInDisplay(x, y);
         Path path = new Path();
         path.moveTo(x, y);
         GestureDescription gesture = new GestureDescription.Builder()
@@ -128,6 +201,8 @@ public class McpAccessibilityService extends AccessibilityService {
      */
     @RequiresApi(api = Build.VERSION_CODES.N)
     public void swipe(float x1, float y1, float x2, float y2, int durationMs) throws Exception {
+        validatePointInDisplay(x1, y1);
+        validatePointInDisplay(x2, y2);
         Path path = new Path();
         path.moveTo(x1, y1);
         path.lineTo(x2, y2);
@@ -155,6 +230,15 @@ public class McpAccessibilityService extends AccessibilityService {
         if (!success.get())                    throw new Exception("Gesture was cancelled");
     }
 
+    private void validatePointInDisplay(float x, float y) throws Exception {
+        Rect display = getDisplayBounds();
+        if (x < display.left || y < display.top || x >= display.right || y >= display.bottom) {
+            throw new Exception("Coordinates outside screen bounds: (" + (int) x + ", "
+                + (int) y + "), screen=[" + display.left + "," + display.top + ","
+                + display.right + "," + display.bottom + "]");
+        }
+    }
+
     // ── Node interaction (ui.click_text, ui.input_text) ──────────────────────
 
     /**
@@ -169,12 +253,17 @@ public class McpAccessibilityService extends AccessibilityService {
         float[] center;
         AccessibilityNodeInfo root = getRootInActiveWindow();
         if (root == null) throw new Exception("Cannot read active window — is the screen on?");
+        NodeSearchBudget budget = new NodeSearchBudget(
+            CLICK_TEXT_MAX_VISITED_NODES, CLICK_TEXT_TIMEOUT_MS);
         try {
-            center = findNodeCenter(root, text, matchMode);
+            center = findNodeCenter(root, text, matchMode, budget);
         } finally {
             root.recycle();
         }
-        if (center == null) throw new Exception("Text not found on screen: \"" + text + "\"");
+        if (center == null) {
+            String suffix = budget.truncated ? " before search budget expired" : "";
+            throw new Exception("Text not found on screen" + suffix + ": \"" + text + "\"");
+        }
         tap(center[0], center[1]);
     }
 
@@ -184,13 +273,30 @@ public class McpAccessibilityService extends AccessibilityService {
      */
     public void inputText(String text) throws Exception {
         runOnMainThread(() -> {
-            AccessibilityNodeInfo focused = findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
-            if (focused == null) throw new Exception("No focused input field found — tap one first");
-            Bundle args = new Bundle();
-            args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
-            boolean ok = focused.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
-            focused.recycle();
-            if (!ok) throw new Exception("ACTION_SET_TEXT failed — field may not be editable");
+            AccessibilityNodeInfo target = null;
+            AccessibilityNodeInfo root = null;
+            try {
+                target = findFocus(AccessibilityNodeInfo.FOCUS_INPUT);
+                if (target != null && !target.isEditable()) {
+                    target.recycle();
+                    target = null;
+                }
+                if (target == null) {
+                    root = getRootInActiveWindow();
+                    target = findFirstEditable(root);
+                    if (target != null) target.performAction(AccessibilityNodeInfo.ACTION_FOCUS);
+                }
+                if (target == null) {
+                    throw new Exception("No editable input field found — tap one first");
+                }
+                Bundle args = new Bundle();
+                args.putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text);
+                boolean ok = target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args);
+                if (!ok) throw new Exception("ACTION_SET_TEXT failed — field may not be editable");
+            } finally {
+                if (target != null) target.recycle();
+                if (root != null) root.recycle();
+            }
             return null;
         });
     }
@@ -251,6 +357,36 @@ public class McpAccessibilityService extends AccessibilityService {
         return dot >= 0 ? s.substring(dot + 1) : s;
     }
 
+    private boolean isTrackableApplicationPackage(String packageName, String activityName) {
+        if (packageName == null || packageName.length() == 0) return false;
+        if (getPackageName().equals(packageName)
+            && !WorkspaceAccessPolicy.isDeclaredActivityName(this, packageName, activityName)) {
+            return false;
+        }
+        if (WorkspaceAccessPolicy.isCurrentInputMethodPackage(this, packageName)) return false;
+        return true;
+    }
+
+    private AccessibilityNodeInfo findFirstEditable(AccessibilityNodeInfo node) {
+        int[] visited = new int[] {0};
+        return findFirstEditable(node, visited);
+    }
+
+    private AccessibilityNodeInfo findFirstEditable(AccessibilityNodeInfo node, int[] visited) {
+        if (node == null || visited[0]++ > 2000) return null;
+        if (node.isEditable() && node.isVisibleToUser()) return AccessibilityNodeInfo.obtain(node);
+        for (int i = 0; i < node.getChildCount(); i++) {
+            AccessibilityNodeInfo child = node.getChild(i);
+            try {
+                AccessibilityNodeInfo result = findFirstEditable(child, visited);
+                if (result != null) return result;
+            } finally {
+                if (child != null) child.recycle();
+            }
+        }
+        return null;
+    }
+
     private static final class FingerprintCollector {
         final List<String> anchors = new ArrayList<>();
         int clickableCount;
@@ -267,8 +403,9 @@ public class McpAccessibilityService extends AccessibilityService {
      * ancestor's center. If no clickable ancestor, uses the matching node's own bounds.
      */
     private float[] findNodeCenter(AccessibilityNodeInfo node, String text,
-                                    String matchMode) {
+                                    String matchMode, NodeSearchBudget budget) {
         if (node == null) return null;
+        if (budget == null || !budget.visit()) return null;
         CharSequence t = node.getText();
         CharSequence d = node.getContentDescription();
         boolean matches;
@@ -288,9 +425,14 @@ public class McpAccessibilityService extends AccessibilityService {
             return new float[]{ (r.left + r.right) / 2f, (r.top + r.bottom) / 2f };
         }
         for (int i = 0; i < node.getChildCount(); i++) {
+            if (budget.shouldStop()) break;
             AccessibilityNodeInfo child = node.getChild(i);
-            float[] result = findNodeCenter(child, text, matchMode);
-            if (child != null) child.recycle();
+            float[] result;
+            try {
+                result = findNodeCenter(child, text, matchMode, budget);
+            } finally {
+                if (child != null) child.recycle();
+            }
             if (result != null) return result;
         }
         return null;
@@ -313,5 +455,33 @@ public class McpAccessibilityService extends AccessibilityService {
         }
         if (current != node) current.recycle();
         return null;
+    }
+
+    private static final class NodeSearchBudget {
+        final int maxVisitedNodes;
+        final long deadlineMs;
+        int visitedNodes;
+        boolean truncated;
+        private boolean stop;
+
+        NodeSearchBudget(int maxVisitedNodes, long timeoutMs) {
+            this.maxVisitedNodes = Math.max(1, maxVisitedNodes);
+            this.deadlineMs = System.currentTimeMillis() + Math.max(1L, timeoutMs);
+        }
+
+        boolean visit() {
+            if (stop) return false;
+            if (visitedNodes >= maxVisitedNodes || System.currentTimeMillis() > deadlineMs) {
+                truncated = true;
+                stop = true;
+                return false;
+            }
+            visitedNodes++;
+            return true;
+        }
+
+        boolean shouldStop() {
+            return stop;
+        }
     }
 }

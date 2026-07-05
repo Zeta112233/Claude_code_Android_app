@@ -460,6 +460,7 @@ public final class CodexExecSession {
         ChatMessage copy = new ChatMessage(message.type, message.content);
         copy.thinking = message.thinking;
         copy.thinkingCollapsed = message.thinkingCollapsed;
+        copy.outputComplete = message.outputComplete;
         copy.toolName = message.toolName;
         copy.toolDetail = message.toolDetail;
         copy.toolDetailCollapsed = message.toolDetailCollapsed;
@@ -688,10 +689,13 @@ public final class CodexExecSession {
             synchronized (mTranscript) {
                 int outputIndex = ChatTurnOrdering.findOutputIndex(mTranscript);
                 if (outputIndex >= 0) {
-                    mTranscript.get(outputIndex).content = clean;
+                    ChatMessage message = mTranscript.get(outputIndex);
+                    message.content = clean;
+                    message.outputComplete = false;
                 } else {
+                    ChatMessage message = ChatMessage.assistantStreaming(clean);
                     mTranscript.add(ChatTurnOrdering.findOutputInsertIndex(mTranscript),
-                        ChatMessage.assistant(clean));
+                        message);
                 }
             }
             if (shouldEmit) {
@@ -819,6 +823,7 @@ public final class CodexExecSession {
 
     private void emitResultLocked(boolean isError, String errMsg) {
         collapseTranscriptThinkingLocked();
+        markTranscriptOutputCompleteLocked();
         for (Listener listener : mListeners) {
             try {
                 listener.onResult(isError, errMsg);
@@ -865,6 +870,15 @@ public final class CodexExecSession {
                     return;
                 }
             }
+        }
+    }
+
+    private void markTranscriptOutputCompleteLocked() {
+        synchronized (mTranscript) {
+            int outputIndex = ChatTurnOrdering.findOutputIndex(mTranscript);
+            if (outputIndex < 0) return;
+            ChatMessage message = mTranscript.get(outputIndex);
+            if (message != null) message.outputComplete = true;
         }
     }
 

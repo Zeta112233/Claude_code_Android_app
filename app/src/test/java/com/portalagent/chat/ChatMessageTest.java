@@ -6,6 +6,15 @@ import org.junit.Test;
 public class ChatMessageTest {
 
     @Test
+    public void assistantStreamingMarksOutputIncomplete() {
+        ChatMessage complete = ChatMessage.assistant("done");
+        ChatMessage streaming = ChatMessage.assistantStreaming("partial");
+
+        Assert.assertTrue(complete.outputComplete);
+        Assert.assertFalse(streaming.outputComplete);
+    }
+
+    @Test
     public void toolResultDisplayDetailIsBoundedForLargePayloads() {
         StringBuilder full = new StringBuilder();
         for (int i = 0; i < 20_000; i++) {
