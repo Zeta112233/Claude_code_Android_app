@@ -1,6 +1,7 @@
 package com.portalagent.loom;
 
 import com.portalagent.provider.AssistantProvider;
+import com.portalagent.setup.RuntimeArch;
 
 public final class LoomSettings {
 
@@ -67,7 +68,7 @@ public final class LoomSettings {
             "observer-phone",
             "driver-phone",
             "slave-phone",
-            "android,phone,aarch64");
+            "android,phone," + RuntimeArch.current().resourceArchTag());
     }
 
     public LoomSettings withObserverUrl(String observerUrl) {

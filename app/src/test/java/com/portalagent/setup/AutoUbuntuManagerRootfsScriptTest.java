@@ -54,6 +54,9 @@ public class AutoUbuntuManagerRootfsScriptTest {
         assertFalse(script.contains("sed -i \"s|/data/data/com.termux|/data/data/com.portalagent|g\""));
         assertTrue(script.contains("patch_bundled_tool_paths; if ! command -v proot-distro"));
         assertTrue(script.contains("install_legacy_termux_deb \"$HOME/.termux-tools/proot.deb\" proot 1 ||"));
+        assertTrue(script.contains("install_termux_runtime_tools_from_repo"));
+        assertTrue(script.contains("pkg install -y proot file"));
+        assertTrue(script.contains("Bundled aarch64 debs are not used on $_pa_arch."));
         assertFalse(script.contains("dpkg -i \"$HOME/.termux-tools/proot.deb\""));
         assertFalse(script.contains("&& bash install.sh)"));
     }

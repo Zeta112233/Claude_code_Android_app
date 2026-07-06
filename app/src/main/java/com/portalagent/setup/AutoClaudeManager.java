@@ -48,7 +48,7 @@ public class AutoClaudeManager {
         try {
             scriptFile.getParentFile().mkdirs();
             try (FileWriter w = new FileWriter(scriptFile)) {
-                w.write(buildClaudeInnerScript());
+                w.write(buildClaudeInnerScript(RuntimeArch.current()));
             }
         } catch (IOException ignored) {
             // 写失败时注入步骤因文件不存在而静默跳过
@@ -69,11 +69,16 @@ public class AutoClaudeManager {
      *   7. 自我清除（从 .bashrc 移除 hook，删除脚本文件）
      */
     public static String buildInnerScriptForTest() {
-        return buildClaudeInnerScript();
+        return buildClaudeInnerScript(RuntimeArch.current());
     }
 
-    private static String buildClaudeInnerScript() {
+    public static String buildInnerScriptForTest(@NonNull RuntimeArch arch) {
+        return buildClaudeInnerScript(arch);
+    }
+
+    private static String buildClaudeInnerScript(@NonNull RuntimeArch arch) {
         StringBuilder s = new StringBuilder();
+        String nativePackage = arch.claudeNativePackage();
 
         s.append("#!/bin/bash\n");
         s.append("# Claude Code auto-setup (sourced from ~/.bashrc on first Ubuntu login)\n\n");
@@ -148,8 +153,12 @@ public class AutoClaudeManager {
 
         // 若主包安装后 native binary 仍缺失，依次尝试两种修复方案
         s.append("if ! claude --version >/dev/null 2>&1; then\n");
-        s.append("    echo '[*] native binary 缺失，尝试补装 ARM64 包...'\n");
-        s.append("    npm install -g @anthropic-ai/claude-code-linux-arm64 --registry https://registry.npmjs.org 2>&1 || true\n");
+        s.append("    echo '[*] native binary 缺失，尝试补装当前架构包...'\n");
+        if (!nativePackage.isEmpty()) {
+            s.append("    npm install -g ").append(nativePackage).append(" --registry https://registry.npmjs.org 2>&1 || true\n");
+        } else {
+            s.append("    echo '[*] No Claude native package for ABI ").append(arch.androidAbi()).append("; trying JS fallback.'\n");
+        }
         s.append("fi\n");
         // 若仍不行，用官方内置的 JS fallback 替换 claude 命令（无需下载，稳定可用）
         s.append("if ! claude --version >/dev/null 2>&1; then\n");

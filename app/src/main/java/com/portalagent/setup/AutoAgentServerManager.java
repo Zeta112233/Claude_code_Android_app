@@ -33,6 +33,7 @@ public class AutoAgentServerManager {
 
     /** 提取到 Termux filesDir 后的相对路径。 */
     static final String ASSET_TGZ_REL    = "home/.agentserver/" + ASSET_TGZ_NAME;
+    private static final String ASSET_TGZ_DIR = "home/.agentserver/";
 
     /** 安装脚本在 filesDir 中的相对路径（AutoUbuntuManager 注入时使用）。 */
     static final String INNER_SCRIPT_REL = "home/.agentserver-inner-setup.sh";
@@ -66,7 +67,14 @@ public class AutoAgentServerManager {
     /** 已提取的 tar.gz 的绝对路径。 */
     @NonNull
     public String getTgzPath() {
-        return new File(mActivity.getFilesDir(), ASSET_TGZ_REL).getAbsolutePath();
+        return new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current())).getAbsolutePath();
+    }
+
+    @NonNull
+    static String assetTgzRel(@NonNull RuntimeArch arch) {
+        String name = arch.agentServerBundledAssetName();
+        if (name.isEmpty()) name = "agentserver-unsupported.tgz";
+        return ASSET_TGZ_DIR + name;
     }
 
     // -------------------------------------------------------------------------
@@ -74,7 +82,7 @@ public class AutoAgentServerManager {
     // -------------------------------------------------------------------------
 
     private void prepare() {
-        File dest = new File(mActivity.getFilesDir(), ASSET_TGZ_REL);
+        File dest = new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current()));
         boolean prevExisted = dest.exists() && dest.length() > 0;
         boolean ok = extractAsset();
         writeInnerScript(ok);
@@ -87,7 +95,9 @@ public class AutoAgentServerManager {
     /** 将 assets/agentserver-linux-arm64.tgz 复制到 filesDir，返回是否成功。
      *  若 asset 大小与磁盘上的文件不一致（APK 更新带入新版），强制重新提取并置 mWasUpdated。 */
     private boolean extractAsset() {
-        File dest = new File(mActivity.getFilesDir(), ASSET_TGZ_REL);
+        RuntimeArch arch = RuntimeArch.current();
+        if (!arch.supportsBundledAgentServer()) return false;
+        File dest = new File(mActivity.getFilesDir(), assetTgzRel(arch));
         long assetSize = getAssetSize();
         // 大小一致：无需更新
         if (dest.exists() && dest.length() > 0 && dest.length() == assetSize) return true;
@@ -96,8 +106,9 @@ public class AutoAgentServerManager {
         mWasUpdated = true;
         dest.getParentFile().mkdirs();
         AssetManager am = mActivity.getAssets();
-        File tmp = new File(dest.getParent(), ASSET_TGZ_NAME + ".tmp");
-        try (InputStream in  = am.open(ASSET_TGZ_NAME);
+        String assetName = arch.agentServerBundledAssetName();
+        File tmp = new File(dest.getParent(), assetName + ".tmp");
+        try (InputStream in  = am.open(assetName);
              FileOutputStream out = new FileOutputStream(tmp)) {
             byte[] buf = new byte[65536];
             int n;
@@ -117,7 +128,9 @@ public class AutoAgentServerManager {
 
     /** 读取 asset 文件的字节数，用于与磁盘文件比对版本。 */
     private long getAssetSize() {
-        try (InputStream in = mActivity.getAssets().open(ASSET_TGZ_NAME)) {
+        RuntimeArch arch = RuntimeArch.current();
+        if (!arch.supportsBundledAgentServer()) return -1;
+        try (InputStream in = mActivity.getAssets().open(arch.agentServerBundledAssetName())) {
             long size = 0;
             byte[] buf = new byte[65536];
             int n;
@@ -134,7 +147,7 @@ public class AutoAgentServerManager {
             String prefix = System.getenv("PREFIX");
             if (prefix == null || prefix.isEmpty())
                 prefix = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
-            String tgzPath = new File(mActivity.getFilesDir(), ASSET_TGZ_REL).getAbsolutePath();
+            String tgzPath = new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current())).getAbsolutePath();
             String bash = prefix + "/bin/bash";
             String termuxHome = prefix + "/../home";
             final String finalPrefix = prefix;
@@ -178,7 +191,7 @@ public class AutoAgentServerManager {
         try {
             scriptFile.getParentFile().mkdirs();
             try (FileWriter w = new FileWriter(scriptFile)) {
-                w.write(buildInnerScript(extractionOk));
+                w.write(buildInnerScript(extractionOk, RuntimeArch.current()));
             }
         } catch (IOException ignored) {}
     }
@@ -187,13 +200,20 @@ public class AutoAgentServerManager {
     // 安装脚本内容
     // -------------------------------------------------------------------------
 
-    private String buildInnerScript(boolean localTgzAvailable) {
+    static String buildInnerScriptForTest(boolean localTgzAvailable, @NonNull RuntimeArch arch) {
+        return buildInnerScript(localTgzAvailable, arch);
+    }
+
+    private static String buildInnerScript(boolean localTgzAvailable, @NonNull RuntimeArch arch) {
+        String tgzPath = arch.agentServerTmpPath();
+        if (tgzPath.isEmpty()) tgzPath = "/tmp/agentserver-unsupported.tar.gz";
+        String downloadUrl = arch.agentServerDownloadUrl();
         StringBuilder s = new StringBuilder();
         s.append("#!/bin/bash\n");
         s.append("# AgentServer auto-setup (sourced from ~/.bashrc after Claude setup)\n\n");
 
         // ── 幂等保护：已安装且 /tmp 没有新包时跳过 ───────────────────────────
-        s.append("if command -v agentserver >/dev/null 2>&1 && [ ! -f /tmp/agentserver-linux-arm64.tar.gz ]; then\n");
+        s.append("if command -v agentserver >/dev/null 2>&1 && [ ! -f '").append(tgzPath).append("' ]; then\n");
         s.append("    sed -i '/.agentserver-setup/d' ~/.bashrc 2>/dev/null\n");
         s.append("    rm -f ~/.agentserver-setup.sh\n");
         s.append("    return 0 2>/dev/null || exit 0\n");
@@ -210,8 +230,15 @@ public class AutoAgentServerManager {
         if (!localTgzAvailable) {
             s.append("echo '[!] 警告：Android 本地安装包提取失败，将尝试从网络下载'\n");
         }
-        s.append("_tgz='/tmp/agentserver-linux-arm64.tar.gz'\n");
-        s.append("_download_url='https://github.com/agentserver/agentserver/releases/download/v0.48.1/agentserver-linux-arm64.tar.gz'\n");
+        s.append("_tgz='").append(tgzPath).append("'\n");
+        s.append("_download_url='").append(downloadUrl).append("'\n");
+        if (!arch.supportsLinuxBinaries()) {
+            s.append("echo '[!] AgentServer has no bundled or release binary for ABI ")
+                .append(arch.androidAbi()).append(".'\n");
+            s.append("sed -i '/.agentserver-setup/d' ~/.bashrc 2>/dev/null\n");
+            s.append("rm -f ~/.agentserver-setup.sh\n");
+            s.append("return 1 2>/dev/null || exit 1\n\n");
+        }
         s.append("if [ ! -f \"$_tgz\" ]; then\n");
         s.append("    echo '[*] 本地安装包未找到，尝试从网络下载...'\n");
         // 下载到 .part 文件，成功后再 mv 到最终路径；避免中断后留下半截 tgz

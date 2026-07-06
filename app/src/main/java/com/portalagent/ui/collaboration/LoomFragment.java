@@ -122,6 +122,7 @@ public class LoomFragment extends Fragment {
         mDriverName = v.findViewById(R.id.loom_driver_name);
         mSlaveName = v.findViewById(R.id.loom_slave_name);
         mTags = v.findViewById(R.id.loom_tags);
+        mTags.setHint(LoomSettings.defaults().tags);
     }
 
     private void setupRoleSpinner() {

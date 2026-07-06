@@ -1,7 +1,6 @@
 package com.portalagent.setup;
 
 import com.portalagent.ui.home.HomeFragment;
-import android.os.Build;
 import androidx.annotation.NonNull;
 import androidx.annotation.Nullable;
 
@@ -115,9 +114,11 @@ public class AutoUbuntuManager {
         writeEcho(session, "[*] Ubuntu 环境未检测到，准备部署...");
         Thread t = new Thread(() -> {
             boolean deployed = false;
+            RuntimeArch runtimeArch = RuntimeArch.current();
 
             // 优先级 1：APK 内置快照（离线）
-            if (UbuntuSnapshotManager.hasAsset(mActivity.getAssets())) {
+            if (runtimeArch.supportsBundledSnapshot()
+                    && UbuntuSnapshotManager.hasAsset(mActivity.getAssets())) {
                 writeEcho(session, "[*] 发现内置快照，离线部署中 (" + UbuntuSnapshotManager.SNAPSHOT_SIZE_LABEL + ")...");
                 final boolean[] ok = {false};
                 UbuntuSnapshotManager.deployFromAsset(mActivity.getAssets(),
@@ -126,16 +127,21 @@ public class AutoUbuntuManager {
             }
 
             // 优先级 2：从 GitHub Release 下载
-            if (!deployed) {
+            if (!deployed && runtimeArch.supportsBundledSnapshot()) {
                 writeEcho(session, "[*] 从 GitHub 下载快照 (" + UbuntuSnapshotManager.SNAPSHOT_SIZE_LABEL + ")，请稍候...");
                 final boolean[] ok = {false};
                 UbuntuSnapshotManager.deploy(makeSnapshotCallback(session, ok));
                 deployed = ok[0];
+            } else if (!runtimeArch.supportsBundledSnapshot()) {
+                writeEcho(session, "[*] ABI " + runtimeArch.androidAbi()
+                    + " uses online Ubuntu install; bundled arm64 snapshot is skipped.");
             }
 
             writeEcho(session, deployed
                 ? "[✓] 快照部署完成，继续环境配置..."
-                : "[!] 快照部署失败，回退到逐步网络安装...");
+                : (runtimeArch.supportsBundledSnapshot()
+                    ? "[!] 快照部署失败，回退到逐步网络安装..."
+                    : "[*] 继续使用在线 Ubuntu 安装流程..."));
 
             launchSetupScript(session);
         }, "ubuntu-snapshot-deploy");
@@ -325,24 +331,42 @@ public class AutoUbuntuManager {
             + "fi; "
             + "[ \"$required\" = \"1\" ] && return 1 || return 0; "
             + "}; "
-            + "auto_ok=1; "
-            + "patch_bundled_tool_paths; if ! command -v proot-distro >/dev/null 2>&1; then "
-            + "echo \"[*] Installing bundled libtalloc + file + proot + proot-distro (static)...\"; "
-            + "install_legacy_termux_deb \"$HOME/.termux-tools/libtalloc.deb\" libtalloc 0 || true; "
-            + "install_legacy_termux_deb \"$HOME/.termux-tools/file.deb\" file 0 || true; "
-            + "install_legacy_termux_deb \"$HOME/.termux-tools/proot.deb\" proot 1 || { echo \"[!] proot install failed.\"; auto_ok=0; }; "
+            + "install_bundled_proot_distro() { "
             + "if [ -f \"$HOME/.termux-tools/proot-distro.tgz\" ]; then "
             + "echo \"[*] extract proot-distro.tgz\"; "
-            + "pd_tmp=$(mktemp -d); "
+            + "pd_tmp=$(mktemp -d); pd_ok=1; "
             + "if tar -xzf \"$HOME/.termux-tools/proot-distro.tgz\" -C \"$pd_tmp\" 2>&1; then "
             + "pd_src=$(find \"$pd_tmp\" -maxdepth 2 -name install.sh -type f | head -1); "
             + "if [ -n \"$pd_src\" ]; then "
             + "(cd \"$(dirname \"$pd_src\")\" && TERMUX_APP_PACKAGE='" + packageName + "' TERMUX_PREFIX=\"$PREFIX\" TERMUX_ANDROID_HOME=\"$HOME\" bash install.sh) 2>&1 "
-            + "&& echo \"[*] proot-distro installed.\" || { echo \"[!] install.sh failed.\"; auto_ok=0; }; "
-            + "else echo \"[!] install.sh not found in tarball.\"; auto_ok=0; fi; "
-            + "else echo \"[!] tar extract failed.\"; auto_ok=0; fi; "
+            + "&& echo \"[*] proot-distro installed.\" || { echo \"[!] install.sh failed.\"; pd_ok=0; }; "
+            + "else echo \"[!] install.sh not found in tarball.\"; pd_ok=0; fi; "
+            + "else echo \"[!] tar extract failed.\"; pd_ok=0; fi; "
             + "rm -rf \"$pd_tmp\"; "
-            + "else echo \"[!] proot-distro.tgz missing.\"; auto_ok=0; fi; "
+            + "[ \"$pd_ok\" = \"1\" ] && return 0 || return 1; "
+            + "else echo \"[!] proot-distro.tgz missing.\"; return 1; fi; "
+            + "}; "
+            + "install_termux_runtime_tools_from_repo() { "
+            + "echo \"[*] Installing proot dependencies from Termux packages for $(uname -m)...\"; "
+            + "if command -v pkg >/dev/null 2>&1; then "
+            + "pkg update -y 2>&1 || true; pkg install -y proot file 2>&1 || return 1; "
+            + "elif command -v apt-get >/dev/null 2>&1; then "
+            + "apt-get update 2>&1 || true; apt-get install -y proot file 2>&1 || return 1; "
+            + "else echo \"[!] pkg/apt-get not found\"; return 1; fi; "
+            + "}; "
+            + "auto_ok=1; "
+            + "patch_bundled_tool_paths; if ! command -v proot-distro >/dev/null 2>&1; then "
+            + "_pa_arch=$(uname -m); "
+            + "if [ \"$_pa_arch\" = \"aarch64\" ] && [ -f \"$HOME/.termux-tools/proot.deb\" ]; then "
+            + "echo \"[*] Installing bundled libtalloc + file + proot + proot-distro (static)...\"; "
+            + "install_legacy_termux_deb \"$HOME/.termux-tools/libtalloc.deb\" libtalloc 0 || true; "
+            + "install_legacy_termux_deb \"$HOME/.termux-tools/file.deb\" file 0 || true; "
+            + "install_legacy_termux_deb \"$HOME/.termux-tools/proot.deb\" proot 1 || { echo \"[!] proot install failed.\"; auto_ok=0; }; "
+            + "else "
+            + "echo \"[*] Bundled aarch64 debs are not used on $_pa_arch.\"; "
+            + "install_termux_runtime_tools_from_repo || { echo \"[!] Termux package install failed.\"; auto_ok=0; }; "
+            + "fi; "
+            + "if [ \"$auto_ok\" = \"1\" ]; then install_bundled_proot_distro || auto_ok=0; fi; "
             + "fi; ";
     }
 
@@ -651,9 +675,11 @@ public class AutoUbuntuManager {
      */
     private void extractTermuxToolsToHome() {
         String home = TermuxConstants.TERMUX_HOME_DIR_PATH;
-        copyAsset(LIBTALLOC_DEB_ASSET, home + "/.termux-tools/libtalloc.deb");
-        copyAsset(FILE_DEB_ASSET,      home + "/.termux-tools/file.deb");
-        copyAsset(PROOT_DEB_ASSET,     home + "/.termux-tools/proot.deb");
+        if (RuntimeArch.current().supportsBundledTermuxTools()) {
+            copyAsset(LIBTALLOC_DEB_ASSET, home + "/.termux-tools/libtalloc.deb");
+            copyAsset(FILE_DEB_ASSET,      home + "/.termux-tools/file.deb");
+            copyAsset(PROOT_DEB_ASSET,     home + "/.termux-tools/proot.deb");
+        }
         copyAsset(PROOT_DISTRO_ASSET,  home + "/.termux-tools/proot-distro.tgz");
     }
 
@@ -741,23 +767,11 @@ public class AutoUbuntuManager {
      */
     @Nullable
     private String resolveRootfsAssetName() {
-        String abi = Build.SUPPORTED_ABIS.length > 0 ? Build.SUPPORTED_ABIS[0] : "arm64-v8a";
+        RuntimeArch runtimeArch = RuntimeArch.current();
         // proot-distro 架构名
-        String arch;
-        switch (abi) {
-            case "armeabi-v7a": arch = "arm";    break;
-            case "x86_64":      arch = "x86_64"; break;
-            case "x86":         arch = "x86";    break;
-            default:            arch = "aarch64"; break; // arm64-v8a
-        }
+        String arch = runtimeArch.prootDistroArch();
         // Ubuntu 官方 base 包使用的架构名（与 proot-distro 不同）
-        String ubuntuArch;
-        switch (abi) {
-            case "armeabi-v7a": ubuntuArch = "armhf"; break;
-            case "x86_64":      ubuntuArch = "amd64"; break;
-            case "x86":         ubuntuArch = "i386";  break;
-            default:            ubuntuArch = "arm64"; break; // arm64-v8a
-        }
+        String ubuntuArch = runtimeArch.ubuntuBaseArch();
 
         try {
             String[] files = mActivity.getAssets().list(ASSET_DIR);
@@ -797,6 +811,7 @@ public class AutoUbuntuManager {
 
     private String buildUbuntuCommand() {
         String localPath = mLocalRootfsPath != null ? mLocalRootfsPath : "";
+        RuntimeArch runtimeArch = RuntimeArch.current();
 
         // rootfs CDN 镜像列表：每对加单引号避免 | 被 bash 解析为管道符
         StringBuilder rootfsMirrors = new StringBuilder();
@@ -930,7 +945,7 @@ public class AutoUbuntuManager {
         // 全部失败
         sb.append("if [ \"$ubuntu_ok\" != \"1\" ]; then ")
           .append("echo \"[!] All install attempts failed.\"; ")
-          .append("echo \"    Tip: pre-place ubuntu-rootfs-aarch64.tar.xz in app assets to install offline.\"; ")
+          .append("echo \"    Tip: pre-place ubuntu-rootfs-").append(runtimeArch.prootDistroArch()).append(".tar.xz in app assets to install offline.\"; ")
           .append("auto_ok=0; fi; ")
           .append("fi; ");
 
@@ -949,11 +964,14 @@ public class AutoUbuntuManager {
         String capabilitiesPath = new File(mActivity.getFilesDir(),
             CapabilitiesManager.CAPABILITIES_FILE_REL).getAbsolutePath();
         String providerFilePath = buildProviderFilePathForUbuntu();
-        String agentTgzPath = new File(mActivity.getFilesDir(),
-            AutoAgentServerManager.ASSET_TGZ_REL).getAbsolutePath();
+        String agentTgzPath = mAgentServerManager == null
+            ? new File(mActivity.getFilesDir(), AutoAgentServerManager.assetTgzRel(runtimeArch)).getAbsolutePath()
+            : mAgentServerManager.getTgzPath();
+        String agentTmpTgz = runtimeArch.agentServerTmpPath();
         String agentInnerPath = new File(mActivity.getFilesDir(),
             AutoAgentServerManager.INNER_SCRIPT_REL).getAbsolutePath();
         String loomTgzPath = mLoomManager == null ? "" : mLoomManager.getTgzPath();
+        String loomTmpTgz = runtimeArch.loomTmpPath();
         String loomInnerPath = mLoomManager == null ? "" : mLoomManager.getInnerScriptPath();
         sb.append("if [ \"$auto_ok\" = \"1\" ]; then ")
           .append("_ubr=\"$PREFIX/var/lib/proot-distro/installed-rootfs/ubuntu\"; ")
@@ -973,7 +991,7 @@ public class AutoUbuntuManager {
           // 注入 AgentServer 安装包 + 安装向导（在 Claude hook 之后，确保安装时 Claude 已就绪）
           .append("if [ -f \"").append(agentTgzPath).append("\" ] && [ -s \"").append(agentTgzPath).append("\" ]; then ")
           .append("mkdir -p \"$_ubr/tmp\" && ")
-          .append("cp \"").append(agentTgzPath).append("\" \"$_ubr/tmp/agentserver-linux-arm64.tar.gz\" && ")
+          .append("cp \"").append(agentTgzPath).append("\" \"$_ubr").append(agentTmpTgz).append("\" && ")
           .append("echo \"[*] agentserver 安装包已复制到 Ubuntu /tmp/\"; ")
           .append("else echo \"[!] agentserver 安装包未就绪（路径: ").append(agentTgzPath).append("），将由脚本联网下载\"; fi; ")
           .append("[ -f \"").append(agentInnerPath).append("\" ] && ")
@@ -984,7 +1002,7 @@ public class AutoUbuntuManager {
           // 注入 Loom addon + 安装向导（独立于 AgentServer 包，复用同一个 Ubuntu runtime）
           .append("if [ -n \"").append(loomTgzPath).append("\" ] && [ -f \"").append(loomTgzPath).append("\" ] && [ -s \"").append(loomTgzPath).append("\" ]; then ")
           .append("mkdir -p \"$_ubr/tmp\" && ")
-          .append("cp \"").append(loomTgzPath).append("\" \"$_ubr/tmp/loom-linux-arm64.tgz\" && ")
+          .append("cp \"").append(loomTgzPath).append("\" \"$_ubr").append(loomTmpTgz).append("\" && ")
           .append("echo \"[*] Loom addon 已复制到 Ubuntu /tmp/\"; ")
           .append("else echo \"[!] Loom addon 未就绪，将由脚本联网下载\"; fi; ")
           .append("if [ -n \"").append(loomInnerPath).append("\" ] && [ -f \"").append(loomInnerPath).append("\" ]; then ")

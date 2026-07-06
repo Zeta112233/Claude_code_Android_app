@@ -1,6 +1,7 @@
 package com.portalagent.loom;
 
 import com.portalagent.provider.AssistantProvider;
+import com.portalagent.setup.RuntimeArch;
 import com.termux.shared.termux.TermuxConstants;
 import com.portalagent.provider.ProviderProfile;
 
@@ -153,7 +154,8 @@ public final class LoomCommandBuilder {
         Paths p = paths(safeSettings);
         String observer = b64(LoomConfigRenderer.renderObserverConfig(safeSettings, p.observerHome));
         String driver = b64(LoomConfigRenderer.renderDriverConfig(safeSettings, p.driverProject, p.driverHome));
-        String slave = b64(LoomConfigRenderer.renderSlaveConfig(safeSettings, p.slaveHome, 1, "aarch64", 1));
+        String slave = b64(LoomConfigRenderer.renderSlaveConfig(
+            safeSettings, p.slaveHome, 1, RuntimeArch.current().resourceArchTag(), 1));
         String mcpJson = b64(driverMcpJson(p));
         String codexMcpToml = codexMcpToml(p);
         String mcpWrapper = b64(driverMcpWrapperPy());
@@ -328,7 +330,7 @@ public final class LoomCommandBuilder {
             + "    \"accepts_tasks\": true,\n"
             + "    \"has_web_ui\": false,\n"
             + "    \"version\": \"android-fallback\",\n"
-            + "    \"platform\": {\"os\": \"android\", \"arch\": \"arm64\"}\n"
+            + "    \"platform\": {\"os\": \"android\", \"arch\": \"" + RuntimeArch.current().androidPlatformArch() + "\"}\n"
             + "  }\n"
             + "}\n"
             + "EOF\n"

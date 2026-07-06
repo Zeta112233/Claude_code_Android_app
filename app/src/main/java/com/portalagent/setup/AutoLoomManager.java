@@ -18,6 +18,7 @@ public class AutoLoomManager {
 
     static final String ASSET_TGZ_NAME = "loom-linux-arm64.tgz";
     static final String ASSET_TGZ_REL = "home/.loom-addon/" + ASSET_TGZ_NAME;
+    private static final String ASSET_TGZ_DIR = "home/.loom-addon/";
     static final String INNER_SCRIPT_REL = "home/.loom-setup.sh";
 
     private final TermuxActivity mActivity;
@@ -50,11 +51,18 @@ public class AutoLoomManager {
 
     @NonNull
     public String getTgzPath() {
-        return new File(mActivity.getFilesDir(), ASSET_TGZ_REL).getAbsolutePath();
+        return new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current())).getAbsolutePath();
+    }
+
+    @NonNull
+    static String assetTgzRel(@NonNull RuntimeArch arch) {
+        String name = arch.loomBundledAssetName();
+        if (name.isEmpty()) name = "loom-unsupported.tgz";
+        return ASSET_TGZ_DIR + name;
     }
 
     private void prepare() {
-        File dest = new File(mActivity.getFilesDir(), ASSET_TGZ_REL);
+        File dest = new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current()));
         boolean prevExisted = dest.exists() && dest.length() > 0;
         boolean ok = extractAsset();
         writeInnerScript(ok);
@@ -65,7 +73,9 @@ public class AutoLoomManager {
     }
 
     private boolean extractAsset() {
-        File dest = new File(mActivity.getFilesDir(), ASSET_TGZ_REL);
+        RuntimeArch arch = RuntimeArch.current();
+        if (!arch.supportsBundledLoom()) return false;
+        File dest = new File(mActivity.getFilesDir(), assetTgzRel(arch));
         long assetSize = getAssetSize();
         if (dest.exists() && dest.length() > 0 && dest.length() == assetSize) return true;
         if (dest.exists()) dest.delete();
@@ -73,8 +83,9 @@ public class AutoLoomManager {
         File parent = dest.getParentFile();
         if (parent != null) parent.mkdirs();
         AssetManager am = mActivity.getAssets();
-        File tmp = new File(dest.getParent(), ASSET_TGZ_NAME + ".tmp");
-        try (InputStream in = am.open(ASSET_TGZ_NAME);
+        String assetName = arch.loomBundledAssetName();
+        File tmp = new File(dest.getParent(), assetName + ".tmp");
+        try (InputStream in = am.open(assetName);
              FileOutputStream out = new FileOutputStream(tmp)) {
             byte[] buf = new byte[65536];
             int n;
@@ -92,7 +103,9 @@ public class AutoLoomManager {
     }
 
     private long getAssetSize() {
-        try (InputStream in = mActivity.getAssets().open(ASSET_TGZ_NAME)) {
+        RuntimeArch arch = RuntimeArch.current();
+        if (!arch.supportsBundledLoom()) return -1;
+        try (InputStream in = mActivity.getAssets().open(arch.loomBundledAssetName())) {
             long size = 0;
             byte[] buf = new byte[65536];
             int n;
@@ -110,7 +123,7 @@ public class AutoLoomManager {
                 prefix = TermuxConstants.TERMUX_PREFIX_DIR_PATH;
             String bash = prefix + "/bin/bash";
             String termuxHome = prefix + "/../home";
-            String tgzPath = new File(mActivity.getFilesDir(), ASSET_TGZ_REL).getAbsolutePath();
+            String tgzPath = new File(mActivity.getFilesDir(), assetTgzRel(RuntimeArch.current())).getAbsolutePath();
             final String finalPrefix = prefix;
 
             String script =
@@ -158,16 +171,23 @@ public class AutoLoomManager {
             File parent = scriptFile.getParentFile();
             if (parent != null) parent.mkdirs();
             try (FileWriter w = new FileWriter(scriptFile)) {
-                w.write(buildInnerScript(extractionOk));
+                w.write(buildInnerScript(extractionOk, RuntimeArch.current()));
             }
         } catch (IOException ignored) {}
     }
 
     public static String buildInnerScriptForTest(boolean localTgzAvailable) {
-        return buildInnerScript(localTgzAvailable);
+        return buildInnerScript(localTgzAvailable, RuntimeArch.current());
     }
 
-    private static String buildInnerScript(boolean localTgzAvailable) {
+    public static String buildInnerScriptForTest(boolean localTgzAvailable, @NonNull RuntimeArch arch) {
+        return buildInnerScript(localTgzAvailable, arch);
+    }
+
+    private static String buildInnerScript(boolean localTgzAvailable, @NonNull RuntimeArch arch) {
+        String loomTgzPath = arch.loomTmpPath();
+        if (loomTgzPath.isEmpty()) loomTgzPath = "/tmp/loom-unsupported.tgz";
+        String loomAssetArch = arch.loomAssetArch();
         StringBuilder s = new StringBuilder();
         s.append("#!/bin/bash\n");
         s.append("# Loom auto-setup (sourced from ~/.bashrc after Ubuntu setup)\n\n");
@@ -175,10 +195,18 @@ public class AutoLoomManager {
         if (!localTgzAvailable) {
             s.append("echo '[!] Local Loom archive was not prepared; using online fallback if needed.'\n");
         }
-        s.append("_tgz='/tmp/loom-linux-arm64.tgz'\n");
+        s.append("_tgz='").append(loomTgzPath).append("'\n");
         s.append("_base='https://github.com/agentserver/loom/releases/latest/download'\n");
         s.append("_claude_skills_dst='/home/claude/loom-driver/.claude/skills'\n");
         s.append("_codex_skills_dst='/home/codex/.codex/skills/loom-driver'\n\n");
+
+        if (!arch.supportsLinuxBinaries()) {
+            s.append("echo '[!] Loom has no release binaries for ABI ")
+                .append(arch.androidAbi()).append(".'\n");
+            s.append("sed -i '/.loom-setup/d' ~/.bashrc 2>/dev/null\n");
+            s.append("rm -f ~/.loom-setup.sh\n");
+            s.append("return 1 2>/dev/null || exit 1\n\n");
+        }
 
         s.append("cleanup_hook() {\n");
         s.append("    sed -i '/.loom-setup/d' ~/.bashrc 2>/dev/null\n");
@@ -347,16 +375,16 @@ public class AutoLoomManager {
         s.append("if [ \"$_local_ok\" != \"1\" ]; then\n");
         s.append("    echo '[*] Local Loom archive not found; downloading release assets...'\n");
         s.append("    dl sha256sums.txt /tmp/sha256sums.txt || true\n");
-        s.append("    ensure_required_asset observer-server.linux-arm64 /tmp/observer-server.linux-arm64 observer-server || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    ensure_required_asset driver-agent.linux-arm64 /tmp/driver-agent.linux-arm64 driver-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
-        s.append("    ensure_required_asset slave-agent.linux-arm64 /tmp/slave-agent.linux-arm64 slave-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    ensure_required_asset observer-server.").append(loomAssetArch).append(" /tmp/observer-server.").append(loomAssetArch).append(" observer-server || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    ensure_required_asset driver-agent.").append(loomAssetArch).append(" /tmp/driver-agent.").append(loomAssetArch).append(" driver-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
+        s.append("    ensure_required_asset slave-agent.").append(loomAssetArch).append(" /tmp/slave-agent.").append(loomAssetArch).append(" slave-agent || { cleanup_hook; return 1 2>/dev/null || exit 1; }\n");
         s.append("    dl driver-skills.tar.gz /tmp/driver-skills.tar.gz || true\n");
         s.append("    dl driver-codex-prompts.tar.gz /tmp/driver-codex-prompts.tar.gz || true\n");
-        s.append("    dl mcp-userspace.linux-arm64 /tmp/mcp-userspace.linux-arm64 || echo '[*] Optional mcp-userspace release asset not available; skipped.'\n");
-        s.append("    [ -f /tmp/observer-server.linux-arm64 ] && install_bin /tmp/observer-server.linux-arm64 /usr/local/bin/observer-server\n");
-        s.append("    [ -f /tmp/driver-agent.linux-arm64 ] && install_bin /tmp/driver-agent.linux-arm64 /usr/local/bin/driver-agent\n");
-        s.append("    [ -f /tmp/slave-agent.linux-arm64 ] && install_bin /tmp/slave-agent.linux-arm64 /usr/local/bin/slave-agent\n");
-        s.append("    [ -f /tmp/mcp-userspace.linux-arm64 ] && verify_asset mcp-userspace.linux-arm64 /tmp/mcp-userspace.linux-arm64 && install_bin /tmp/mcp-userspace.linux-arm64 /usr/local/bin/mcp-userspace || true\n");
+        s.append("    dl mcp-userspace.").append(loomAssetArch).append(" /tmp/mcp-userspace.").append(loomAssetArch).append(" || echo '[*] Optional mcp-userspace release asset not available; skipped.'\n");
+        s.append("    [ -f /tmp/observer-server.").append(loomAssetArch).append(" ] && install_bin /tmp/observer-server.").append(loomAssetArch).append(" /usr/local/bin/observer-server\n");
+        s.append("    [ -f /tmp/driver-agent.").append(loomAssetArch).append(" ] && install_bin /tmp/driver-agent.").append(loomAssetArch).append(" /usr/local/bin/driver-agent\n");
+        s.append("    [ -f /tmp/slave-agent.").append(loomAssetArch).append(" ] && install_bin /tmp/slave-agent.").append(loomAssetArch).append(" /usr/local/bin/slave-agent\n");
+        s.append("    [ -f /tmp/mcp-userspace.").append(loomAssetArch).append(" ] && verify_asset mcp-userspace.").append(loomAssetArch).append(" /tmp/mcp-userspace.").append(loomAssetArch).append(" && install_bin /tmp/mcp-userspace.").append(loomAssetArch).append(" /usr/local/bin/mcp-userspace || true\n");
         s.append("    cp /usr/local/bin/driver-agent /home/claude/loom-driver/driver-agent\n");
         s.append("    chmod +x /home/claude/loom-driver/driver-agent\n");
         s.append("    cp /usr/local/bin/driver-agent /home/codex/loom-driver/driver-agent\n");
@@ -368,7 +396,7 @@ public class AutoLoomManager {
         s.append("chown -R claude:claude /home/claude/.loom /home/claude/loom-driver\n");
         s.append("chown -R codex:codex /home/codex/.loom /home/codex/loom-driver /home/codex/.codex\n");
         s.append("[ -n \"$_tmpdir\" ] && rm -rf \"$_tmpdir\"\n");
-        s.append("rm -f \"$_tgz\" /tmp/observer-server.linux-arm64 /tmp/driver-agent.linux-arm64 /tmp/slave-agent.linux-arm64 /tmp/mcp-userspace.linux-arm64 /tmp/driver-skills.tar.gz /tmp/driver-codex-prompts.tar.gz /tmp/sha256sums.txt\n");
+        s.append("rm -f \"$_tgz\" /tmp/observer-server.").append(loomAssetArch).append(" /tmp/driver-agent.").append(loomAssetArch).append(" /tmp/slave-agent.").append(loomAssetArch).append(" /tmp/mcp-userspace.").append(loomAssetArch).append(" /tmp/driver-skills.tar.gz /tmp/driver-codex-prompts.tar.gz /tmp/sha256sums.txt\n");
         s.append("cleanup_hook\n");
         s.append("echo '[*] Loom setup complete.'\n");
 

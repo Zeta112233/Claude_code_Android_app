@@ -22,4 +22,13 @@ public class AutoClaudeManagerScriptTest {
         assertFalse(script.contains("read -r _base"));
         assertFalse(script.contains("Anthropic API Key"));
     }
+
+    @Test
+    public void innerScriptUsesX64NativePackageOnX86_64() {
+        String script = AutoClaudeManager.buildInnerScriptForTest(
+            RuntimeArch.forAbiForTest("x86_64"));
+
+        assertTrue(script.contains("@anthropic-ai/claude-code-linux-x64"));
+        assertFalse(script.contains("npm install -g @anthropic-ai/claude-code-linux-arm64 --registry"));
+    }
 }

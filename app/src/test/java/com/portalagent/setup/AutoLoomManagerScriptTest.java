@@ -1,5 +1,6 @@
 package com.portalagent.setup;
 
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import org.junit.Test;
@@ -30,6 +31,18 @@ public class AutoLoomManagerScriptTest {
         assertTrue(script.contains("sha256sums.txt"));
         assertTrue(script.contains("verify_asset()"));
         assertTrue(script.contains("sha256sum"));
+    }
+
+    @Test
+    public void innerScriptUsesAmd64ReleaseAssetsOnX86_64() {
+        String script = AutoLoomManager.buildInnerScriptForTest(
+            false, RuntimeArch.forAbiForTest("x86_64"));
+
+        assertTrue(script.contains("_tgz='/tmp/loom-linux-amd64.tgz'"));
+        assertTrue(script.contains("observer-server.linux-amd64"));
+        assertTrue(script.contains("driver-agent.linux-amd64"));
+        assertTrue(script.contains("slave-agent.linux-amd64"));
+        assertFalse(script.contains("observer-server.linux-arm64"));
     }
 
     @Test
