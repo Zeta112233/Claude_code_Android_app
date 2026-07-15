@@ -1,246 +1,214 @@
-<h1 align="center">PortalAgent</h1>
+<h1 align="center">
+  <img src="app/src/main/res/drawable-nodpi/portalagent_logo.png" alt="PortalAgent" width="72" valign="middle" /> PortalAgent
+</h1>
 
 <p align="center">
-  <b>Run a local agent runtime on Android. Let your phone observe, act, and collaborate.</b>
-</p>
-
-<p align="center">
-  <a href="#get-the-android-app">Android App</a> ·
-  <a href="#quick-start">Quick Start</a> ·
-  <a href="#why-portalagent">Why</a> ·
-  <a href="#runtime-architecture">Architecture</a> ·
-  <a href="#build-from-source">Build</a> ·
-  <a href="#status-and-safety">Safety</a> ·
-  <a href="#repository-map">Repository Map</a> ·
-  <a href="SECURITY.md">Security</a>
-</p>
-
-<p align="center">
+  <a href="release/"><img alt="Android APK" src="https://img.shields.io/badge/APK-release-2F80ED"></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Android-3DDC84">
-  <img alt="Runtime" src="https://img.shields.io/badge/runtime-Termux%20%2B%20Ubuntu-black">
-  <img alt="Agents" src="https://img.shields.io/badge/agents-Codex%20%7C%20Claude-blue">
+  <img alt="Status" src="https://img.shields.io/badge/status-experimental-orange">
+  <img alt="Providers" src="https://img.shields.io/badge/providers-Codex%20%7C%20Claude-4B6EF5">
   <a href="LICENSE.md"><img alt="License" src="https://img.shields.io/badge/license-GPLv3-green.svg"></a>
 </p>
 
-PortalAgent is a phone-native agent runtime for Android. It packages a
-Termux-based execution layer, an Ubuntu proot environment, Codex/Claude
-provider support, Android MCP tools, and AgentServer/Loom collaboration into
-one APK-managed mobile runtime.
+<p align="center">
+  <sub><a href="docs/readme/README.zh-CN.md">中文</a></sub>
+</p>
 
-Instead of treating the phone as a passive remote screen, PortalAgent makes the
-phone the runtime. The agent can observe Android state, use local files and
-shell tools, operate approved apps through accessibility/ADB channels, and join
-remote collaboration workflows as a mobile agent node.
+<p align="center">
+  <strong>A phone-native workspace for mobile AI agents.</strong><br/>
+  Run Codex or Claude from Android, grant device capabilities deliberately, and keep agent activity visible in one local app.
+</p>
 
-## Get The Android App
+<h3 align="center"><a href="release/"><ins>Download APK</ins></a></h3>
 
-The Android app is the recommended way to try PortalAgent. It handles runtime
-deployment, provider setup, Android permissions, phone-control tools, and
-collaboration status from a phone-native UI.
+<p align="center">
+  <img src="docs/images/readme/home.png" alt="PortalAgent home chat workspace" width="250" />
+  <img src="docs/images/readme/collaboration.png" alt="PortalAgent collaboration runtime" width="250" />
+  <img src="docs/images/readme/settings.png" alt="PortalAgent settings and access controls" width="250" />
+</p>
 
-Download a prebuilt APK from [`release/`](release/) or the project releases
-when available. You can also build the debug APK locally:
+PortalAgent turns an Android phone into a local agent workspace. The app brings together chat, provider keys, a Termux-derived runtime, Android device tools, collaboration status, and repair controls so mobile agent work can be inspected and recovered from the phone itself.
 
-```powershell
-.\gradlew.bat :app:assembleDebug
-adb install -r app\build\outputs\apk\debug\portal-agent_apt-android-7-debug_universal.apk
-```
+It is not a general sandbox for untrusted prompts or unknown remote operators. PortalAgent is designed around explicit user control: grant the capabilities you need, keep the app's activity visible, and treat powerful device-control tools as trusted automation.
 
-If you clone the repository, install Git LFS first and pull large assets:
-
-```powershell
-git lfs install
-git lfs pull
-```
+## Features
 
 <table>
-  <tr>
-    <td align="center">
-      <img src="docs/images/readme/home.png" width="240" alt="PortalAgent home chat screen" />
-    </td>
-    <td align="center">
-      <img src="docs/images/readme/collaboration.png" width="240" alt="PortalAgent collaboration runtime screen" />
-    </td>
-    <td align="center">
-      <img src="docs/images/readme/settings.png" width="240" alt="PortalAgent settings screen" />
-    </td>
-  </tr>
-  <tr>
-    <td align="center"><strong>Chat with a local agent</strong></td>
-    <td align="center"><strong>Run collaboration workflows</strong></td>
-    <td align="center"><strong>Control runtime permissions</strong></td>
-  </tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Mobile Agent Workspace
+
+Start conversations from Android and keep the agent's responses, tool activity, attachments, and session controls in one phone-native interface.
+
+Supports provider workflows for **Codex** and **Claude**.
+
+</td>
+<td width="50%">
+  <img src="docs/images/readme/home.png" alt="PortalAgent home chat workspace" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Collaboration Runtime
+
+Bind a Driver workspace, manage local Slave roles, and monitor AgentServer/Loom collaboration state directly from the phone.
+
+Use it when the Android device should participate as a mobile agent node instead of only acting as a remote screen.
+
+</td>
+<td width="50%">
+  <img src="docs/images/readme/collaboration.png" alt="PortalAgent collaboration runtime dashboard" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Device Tools With User Control
+
+Expose selected Android capabilities to the agent: screenshots, UI trees, taps, text input, clipboard, camera, sensors, network state, battery state, and ADB-assisted fallback.
+
+Capabilities remain visible and should be granted only for the task at hand.
+
+</td>
+<td width="50%">
+  <img src="docs/images/readme/api-tools.png" alt="PortalAgent device API self-check screen" width="100%" />
+</td>
+</tr>
+<tr>
+<td width="50%" valign="middle">
+
+### Access And Repair Surface
+
+Review automation settings, app/file access boundaries, terminal preferences, plugins, and environment repair tools without leaving the app.
+
+If setup is interrupted, the repair flow rechecks the local runtime and Android capability bridges.
+
+</td>
+<td width="50%">
+  <img src="docs/images/readme/settings.png" alt="PortalAgent settings screen" width="100%" />
+</td>
+</tr>
 </table>
 
-## Quick Start
+**Also included:**
 
-1. Install the APK and open PortalAgent.
-2. Keep the app in the foreground and wait on the Terminal tab while the
-   runtime is deployed.
-3. Open the Keys tab and configure a Codex or Claude provider.
-4. Grant only the Android capabilities you want the agent to use, such as
-   screen capture, accessibility, and optional ADB companion access.
-5. Return to Home and start a chat, or open Collaboration to bind a Driver,
-   start local Loom roles, and connect to AgentServer workflows.
+- **Local Android runtime** - Termux-derived terminal components plus an Ubuntu proot environment for agent tooling.
+- **Provider separation** - Codex and Claude workflows keep their own configuration, keys, prompts, and histories.
+- **Permission-first operation** - Android screen capture, accessibility, storage, camera, sensor, and app-operation capabilities are surfaced as user decisions.
+- **Workspace restrictions** - File and app operations can be narrowed to approved locations and packages.
+- **Runtime repair** - Re-run environment checks when provider tools, collaboration binaries, or Android bridges fail.
+- **Real-device validation path** - Build, install, and test on a connected Android device with standard Gradle and ADB commands.
 
-Runtime setup is complete when the terminal shows:
+---
 
-```text
-[✓] PortalAgent environment setup successful.
+## Supported Agents
+
+PortalAgent focuses on mobile workflows for CLI-based coding agents that can run inside the bundled Linux environment.
+
+<p>
+  <kbd>Codex</kbd> &nbsp;
+  <kbd>Claude Code</kbd>
+</p>
+
+Provider support is experimental and should be validated on the target device before relying on it for long-running work.
+
+---
+
+## Install
+
+### Android APK
+
+Install a prebuilt APK from [`release/`](release/) or from project releases when available.
+
+```powershell
+adb devices
+adb install -r release\portal-agent_apt-android-7-debug_universal.apk
 ```
 
-If setup is interrupted, open `Settings -> App Settings -> Environment Repair`.
-The repair flow rechecks Ubuntu, Termux tools, Codex/Claude setup,
-AgentServer, Loom, and Android capability wrappers.
+On first run:
 
-## Why PortalAgent?
+1. Open PortalAgent and keep it in the foreground while the local environment is prepared.
+2. Open the Keys page and configure the provider you want to use.
+3. Grant only the Android capabilities needed for your task.
+4. Return to Home for chat, or open Collaboration for trusted remote workflows.
 
-Modern mobile agents need more than screenshot reasoning. They need a local
-runtime close to the apps, files, permissions, and device state they are asked
-to use.
+If setup is interrupted, use `Settings -> App Settings -> Environment Repair`.
 
-| Capability | Why it matters |
-| --- | --- |
-| **Phone-native runtime** | The Android device hosts the terminal layer, Ubuntu runtime, Android tools, provider configs, logs, and collaboration state. |
-| **Codex and Claude provider isolation** | Each provider gets separate Linux users, homes, keys, prompts, and history. |
-| **Android MCP bridge** | Models can call structured tools for screenshots, UI trees, taps, swipes, text input, app launch, files, sensors, network state, and ADB fallback. |
-| **Collaboration runtime** | AgentServer and Loom support Driver binding, local Observer/Driver/Slave roles, and remote task dispatch. |
-| **Progressive permission model** | Users grant phone capabilities explicitly instead of giving every tool full device access by default. |
-
-## Runtime Architecture
-
-| Layer | Role |
-| --- | --- |
-| Android app | Main UI, provider settings, permission prompts, runtime repair, collaboration dashboard, and MCP/HTTP bridges. |
-| Termux layer | APK-bundled terminal substrate and bootstrap environment. |
-| Ubuntu proot | Shared Linux runtime for Node.js, Codex/Claude CLI setup, AgentServer, Loom binaries, and provider users. |
-| Provider users | `codex` and `claude` isolate API keys, home directories, prompts, settings, and histories. |
-| Android MCP tools | Capability bridge for UI automation, screenshots, files, device state, app launch, clipboard, sensors, and ADB fallback. |
-| Collaboration tools | AgentServer and Loom provide workspace binding, Driver/Slave operation, and remote orchestration. |
-
-### Runtime Assets
-
-PortalAgent keeps the APK practical by bundling only the current ARM64 offline
-runtime assets and using online fallback where needed.
-
-| Asset | Current behavior |
-| --- | --- |
-| Ubuntu snapshot | Bundled for `arm64-v8a` as `ubuntu-claude-aarch64-20260521.tar.xz`. |
-| Termux tool debs | Bundled for `aarch64`; non-ARM64 devices use Termux package fallback. |
-| AgentServer | Bundled for `linux-arm64`; `x86_64` downloads `agentserver-linux-amd64.tar.gz` from the same pinned version. |
-| Loom | Bundled for `linux-arm64`; `x86_64` downloads matching `*.linux-amd64` release assets. |
-| Claude native binary | Uses `@anthropic-ai/claude-code-linux-arm64` on ARM64 and `@anthropic-ai/claude-code-linux-x64` on x86_64. |
-
-### Android Architecture Support
-
-| Android ABI | Status |
-| --- | --- |
-| `arm64-v8a` | Primary supported path with bundled offline runtime assets. |
-| `x86_64` | Supported through online runtime fallback for Windows/desktop Android emulators. |
-| `armeabi-v7a`, `x86` | App bootstrap can build, but AgentServer/Loom/Claude native runtime support is not the main path yet. |
-
-## Status And Safety
-
-PortalAgent is under active development. It can operate powerful phone-control
-channels when authorized, so use it as a trusted local runtime rather than a
-generic untrusted app sandbox.
-
-Before sharing logs or traces, review them for:
-
-- API keys and provider tokens.
-- Screenshots and UI text from private apps.
-- Local file paths and workspace content.
-- AgentServer/Loom workspace credentials.
-- Android package names and app data paths.
-
-The current workspace restriction feature narrows the directories and app data
-the agent is expected to use, but it should be treated as a product-level
-control boundary, not a complete OS security sandbox.
-
-Security policy: [SECURITY.md](SECURITY.md)
-
-## Build From Source
+### Build From Source
 
 Requirements:
 
 - JDK 21.
 - Android SDK 36.
 - Android NDK `29.0.14206865`.
-- Git LFS for bundled snapshot/APK assets.
+- Git LFS.
 - PowerShell on Windows for the commands below.
 
-Build a debug APK:
-
 ```powershell
+git lfs install
 git lfs pull
 .\gradlew.bat :app:testDebugUnitTest
 .\gradlew.bat :app:assembleDebug
 ```
 
-Install to a connected device:
+Install the locally built debug APK:
 
 ```powershell
-adb devices
 adb install -r app\build\outputs\apk\debug\portal-agent_apt-android-7-debug_universal.apk
 ```
 
-Check the installed version:
+Check the installed package version:
 
 ```powershell
 adb shell dumpsys package com.portalagent | findstr /i "versionName versionCode"
 ```
 
-Current app version in Gradle:
+---
 
-```text
-versionName 0.118.0
-versionCode 118
-```
+## Trust And Safety
 
-## Repository Map
+PortalAgent can expose powerful phone-control abilities when the user grants them. Treat it as a trusted local automation app, not as a sandbox for untrusted prompts or unknown remote operators.
+
+Before enabling a capability, decide whether the agent should be allowed to:
+
+- See screen content from other apps.
+- Click, type, scroll, or launch selected apps.
+- Read files from approved folders.
+- Use camera, clipboard, sensors, or device status tools.
+- Connect to remote collaboration services.
+
+The current product boundary is permission-first and tool-level. It should be treated as a user control and safety boundary, not as a complete operating system sandbox.
+
+Security policy: [SECURITY.md](SECURITY.md)
+
+---
+
+## Developing
+
+Detailed design notes live under [`docs/`](docs/). Runtime internals, compatibility notes, and implementation plans should stay there instead of crowding the README opening.
+
+Useful starting points:
+
+- [`docs/architecture/agent_behavior_restriction_plan.md`](docs/architecture/agent_behavior_restriction_plan.md)
+- [`docs/architecture/termux_api_full_integration.md`](docs/architecture/termux_api_full_integration.md)
+- [`docs/architecture/chat_copy_and_browser_search_stability.md`](docs/architecture/chat_copy_and_browser_search_stability.md)
+
+Repository layout:
 
 | Path | Purpose |
 | --- | --- |
-| `app/` | Android app, setup orchestration, MCP bridge, provider UI, collaboration UI, and packaged runtime assets. |
-| `terminal-emulator/`, `terminal-view/`, `termux-shared/` | Termux-derived terminal and shared libraries. |
-| `docs/superpowers/specs/` | Design notes for provider support, Loom integration, automation boost, and collaboration boundaries. |
-| `docs/images/readme/` | README screenshots. |
-| `release/` | Locally tracked release APK artifacts via Git LFS. |
-| `.github/` | Issue templates and CI workflows. |
+| `app/` | Android app, product UI, setup orchestration, phone tools, provider screens, and collaboration UI. |
+| `terminal-emulator/`, `terminal-view/`, `termux-shared/` | Termux-derived terminal and shared Android libraries. |
+| `docs/` | Architecture notes, plans, screenshots, and project documentation. |
+| `release/` | Locally tracked APK artifacts and large assets managed through Git LFS. |
+| `.github/` | Issue templates, workflows, funding metadata, and dependency automation. |
 
-Useful design notes:
+Issues and pull requests are welcome. Useful reports include the device model, Android version, ABI, PortalAgent version, permission state, redacted setup logs, and screenshots when UI behavior is involved.
 
-- [`docs/superpowers/specs/2026-06-04-codex-provider-support-design.md`](docs/superpowers/specs/2026-06-04-codex-provider-support-design.md)
-- [`docs/superpowers/specs/2026-06-03-loom-offline-addon-integration-design.md`](docs/superpowers/specs/2026-06-03-loom-offline-addon-integration-design.md)
-- [`docs/superpowers/specs/2026-06-10-automation-boost-design.md`](docs/superpowers/specs/2026-06-10-automation-boost-design.md)
-- [`docs/superpowers/specs/2026-06-16-agentserver-loom-connection-boundary-design.md`](docs/superpowers/specs/2026-06-16-agentserver-loom-connection-boundary-design.md)
-- [`docs/superpowers/specs/2026-06-16-agentserver-loom-unified-collaboration-design.md`](docs/superpowers/specs/2026-06-16-agentserver-loom-unified-collaboration-design.md)
-
-## Troubleshooting
-
-| Symptom | First check |
-| --- | --- |
-| Runtime setup never reaches success | Keep the app foregrounded, confirm network access, then run Environment Repair. |
-| Screenshot tools are unavailable | Regrant screen capture permission after app restart or Android permission reset. |
-| UI tools cannot click a target app | Confirm accessibility is enabled and that the app is allowed in PortalAgent workspace/app access settings. |
-| AgentServer is connected but Loom asks for Driver binding | This is expected; AgentServer workspace connection and Loom Driver binding use separate credentials. |
-| x86_64 emulator cannot use bundled snapshot | Expected; x86_64 uses online Ubuntu and amd64 binary fallback to avoid shipping a second large image. |
-
-## Contributing
-
-Issues and pull requests are welcome. For useful reports, include:
-
-- Device model, Android version, and ABI.
-- PortalAgent version and APK source.
-- Whether the runtime is ARM64 bundled mode or x86_64 online fallback.
-- Redacted terminal logs from setup or Environment Repair.
-- Reproduction steps and screenshots when UI behavior is involved.
-
-Do not attach raw API keys, workspace tokens, unredacted app screenshots, or
-private file listings.
+Do not attach raw API keys, workspace tokens, unredacted private screenshots, or private file listings.
 
 ## License
 
-PortalAgent is built on Termux-derived code and keeps the corresponding
-licensing model. See [LICENSE.md](LICENSE.md) for GPLv3 and upstream library
-exceptions.
+PortalAgent is built on Termux-derived code and keeps the corresponding licensing model. See [LICENSE.md](LICENSE.md) for GPLv3 and upstream library exceptions.
