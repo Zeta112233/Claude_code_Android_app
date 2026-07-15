@@ -44,6 +44,13 @@ $scriptContent = Get-Content -Encoding UTF8 -Raw -LiteralPath $ScriptPath
 Assert-Contains $scriptContent 'HOST_OS' "Release gate should define HOST_OS for Windows NDK builds"
 Assert-Contains $scriptContent 'windows' "Release gate should set HOST_OS to windows for Windows NDK builds"
 Assert-Contains $scriptContent 'KEYCODE_WAKEUP' "Device suite should wake the screen before launch/screenshot"
+Assert-Contains $scriptContent 'host.runtime-versions' "Release gate should verify pinned runtime versions"
+Assert-Contains $scriptContent 'runtime-versions.json' "Release gate should verify runtime version manifests"
+Assert-Contains $scriptContent 'release-notes.md' "Release gate should verify release notes include runtime versions"
+Assert-Contains $scriptContent 'ConvertTo-ShellSingleQuotedArgument' "Release gate should quote proot shell commands"
+Assert-Contains $scriptContent 'run-as com.portalagent sh -lc' "Release gate should run proot commands through one quoted adb shell command"
+Assert-Contains $scriptContent 'agent.codex-setup-upgrade' "Agent suite should run the pinned Codex setup before probing"
+Assert-Contains $scriptContent 'agent.claude-setup-upgrade' "Agent suite should run the pinned Claude setup before probing"
 
 $dryRunDir = Join-Path $TmpRoot "dry-run"
 & powershell.exe -NoProfile -ExecutionPolicy Bypass -File $ScriptPath -Suite all -DryRun -OutputDir $dryRunDir | Out-Null

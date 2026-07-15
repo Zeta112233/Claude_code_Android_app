@@ -79,12 +79,20 @@ public class AutoClaudeManager {
     private static String buildClaudeInnerScript(@NonNull RuntimeArch arch) {
         StringBuilder s = new StringBuilder();
         String nativePackage = arch.claudeNativePackage();
+        String nativePackageSpec = nativePackage.isEmpty()
+            ? ""
+            : nativePackage + "@" + RuntimeVersions.CLAUDE_CODE_VERSION;
 
         s.append("#!/bin/bash\n");
         s.append("# Claude Code auto-setup (sourced from ~/.bashrc on first Ubuntu login)\n\n");
+        s.append("CLAUDE_TARGET_VERSION='").append(RuntimeVersions.CLAUDE_CODE_VERSION).append("'\n\n");
 
         // ── 幂等保护：claude 已安装则自我清除并退出 ──────────────────────────
+        s.append("_claude_current=''\n");
         s.append("if command -v claude >/dev/null 2>&1; then\n");
+        s.append("    _claude_current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1 || true)\n");
+        s.append("fi\n");
+        s.append("if [ \"$_claude_current\" = \"$CLAUDE_TARGET_VERSION\" ]; then\n");
         s.append("    sed -i '/.claude-setup/d' ~/.bashrc 2>/dev/null\n");
         s.append("    rm -f ~/.claude-setup.sh\n");
         s.append("    return 0 2>/dev/null || exit 0\n");
@@ -149,13 +157,13 @@ public class AutoClaudeManager {
         // ── Step 4: 安装 claude-code ──────────────────────────────────────────
         s.append("echo '[3/3] 正在安装 Claude Code（npm install -g）...'\n");
         s.append("echo '      包较多，预计 1~3 分钟，请耐心等待...'\n");
-        s.append("npm install -g @anthropic-ai/claude-code --include=optional 2>&1\n\n");
+        s.append("npm install -g ").append(RuntimeVersions.CLAUDE_CODE_NPM_SPEC).append(" --include=optional 2>&1\n\n");
 
         // 若主包安装后 native binary 仍缺失，依次尝试两种修复方案
         s.append("if ! claude --version >/dev/null 2>&1; then\n");
         s.append("    echo '[*] native binary 缺失，尝试补装当前架构包...'\n");
         if (!nativePackage.isEmpty()) {
-            s.append("    npm install -g ").append(nativePackage).append(" --registry https://registry.npmjs.org 2>&1 || true\n");
+            s.append("    npm install -g ").append(nativePackageSpec).append(" --registry https://registry.npmjs.org 2>&1 || true\n");
         } else {
             s.append("    echo '[*] No Claude native package for ABI ").append(arch.androidAbi()).append("; trying JS fallback.'\n");
         }
@@ -170,9 +178,10 @@ public class AutoClaudeManager {
         s.append("    fi\n");
         s.append("fi\n\n");
 
-        s.append("if ! command -v claude >/dev/null 2>&1; then\n");
+        s.append("_claude_current=$(claude --version 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1 || true)\n");
+        s.append("if ! command -v claude >/dev/null 2>&1 || [ \"$_claude_current\" != \"$CLAUDE_TARGET_VERSION\" ]; then\n");
         s.append("    echo '[!] Claude Code 安装失败，请手动运行：'\n");
-        s.append("    echo '    npm install -g @anthropic-ai/claude-code --include=optional'\n");
+        s.append("    echo '    npm install -g ").append(RuntimeVersions.CLAUDE_CODE_NPM_SPEC).append(" --include=optional'\n");
         s.append("    return 1 2>/dev/null || exit 1\n");
         s.append("fi\n");
         s.append("echo '[*] Claude Code 安装成功'\n\n");

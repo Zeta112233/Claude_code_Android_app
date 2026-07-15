@@ -1,0 +1,27 @@
+{
+    "generatedAt":  "2026-07-15T06:39:48.9026683Z",
+    "components":  {
+                       "codex":  {
+                                     "version":  "0.144.4",
+                                     "package":  "@openai/codex",
+                                     "source":  "https://registry.npmjs.org/@openai%2fcodex"
+                                 },
+                       "claude":  {
+                                      "version":  "2.1.210",
+                                      "package":  "@anthropic-ai/claude-code",
+                                      "source":  "https://registry.npmjs.org/@anthropic-ai%2fclaude-code"
+                                  },
+                       "agentserver":  {
+                                           "version":  "v0.69.9",
+                                           "repo":  "agentserver/agentserver",
+                                           "source":  "https://github.com/agentserver/agentserver",
+                                           "arm64Asset":  "agentserver-linux-arm64.tar.gz",
+                                           "arm64DownloadUrl":  "https://github.com/agentserver/agentserver/releases/download/v0.69.9/agentserver-linux-arm64.tar.gz"
+                                       },
+                       "loom":  {
+                                    "version":  "v0.0.10",
+                                    "repo":  "agentserver/loom",
+                                    "source":  "https://github.com/agentserver/loom"
+                                }
+                   }
+}

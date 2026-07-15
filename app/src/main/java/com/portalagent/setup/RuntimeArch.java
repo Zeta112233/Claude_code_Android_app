@@ -225,7 +225,8 @@ public final class RuntimeArch {
         String archive = agentServerArchiveName();
         return archive.isEmpty()
             ? ""
-            : "https://github.com/agentserver/agentserver/releases/download/v0.48.1/" + archive;
+            : "https://github.com/agentserver/agentserver/releases/download/"
+                + RuntimeVersions.AGENTSERVER_VERSION + "/" + archive;
     }
 
     @NonNull

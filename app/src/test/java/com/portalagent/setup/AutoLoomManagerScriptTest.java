@@ -25,7 +25,8 @@ public class AutoLoomManagerScriptTest {
     public void innerScriptHasOnlineFallbackAndPartFiles() {
         String script = AutoLoomManager.buildInnerScriptForTest(false);
 
-        assertTrue(script.contains("github.com/agentserver/loom/releases/latest/download"));
+        assertTrue(script.contains("github.com/agentserver/loom/releases/download/" + RuntimeVersions.LOOM_VERSION));
+        assertFalse(script.contains("github.com/agentserver/loom/releases/latest/download"));
         assertTrue(script.contains(".part"));
         assertTrue(script.contains("driver-skills.tar.gz"));
         assertTrue(script.contains("sha256sums.txt"));

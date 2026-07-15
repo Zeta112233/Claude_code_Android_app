@@ -54,6 +54,7 @@ public class AutoCodexManager {
         s.append("#!/bin/bash\n");
         s.append("# Codex auto-setup (sourced from ~/.bashrc on first Ubuntu login)\n\n");
         s.append("CODEX_SETUP_SENTINEL=/home/codex/.codex/setup-complete\n\n");
+        s.append("CODEX_TARGET_VERSION='").append(RuntimeVersions.CODEX_VERSION).append("'\n\n");
 
         s.append("cleanup_hook() {\n");
         s.append("    sed -i '/.codex-setup/d' ~/.bashrc 2>/dev/null\n");
@@ -84,7 +85,11 @@ public class AutoCodexManager {
         s.append("mkdir -p /home/codex/.codex\n");
         s.append("refresh_codex_runtime_files\n\n");
 
-        s.append("if command -v codex >/dev/null 2>&1 && [ -f \"$CODEX_SETUP_SENTINEL\" ]; then\n");
+        s.append("_codex_current=''\n");
+        s.append("if command -v codex >/dev/null 2>&1; then\n");
+        s.append("    _codex_current=$(codex --version 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1 || true)\n");
+        s.append("fi\n");
+        s.append("if [ \"$_codex_current\" = \"$CODEX_TARGET_VERSION\" ] && [ -f \"$CODEX_SETUP_SENTINEL\" ]; then\n");
         s.append("    cleanup_hook\n");
         s.append("    return 0 2>/dev/null || exit 0\n");
         s.append("fi\n\n");
@@ -96,14 +101,15 @@ public class AutoCodexManager {
         s.append("    apt-get install -y --no-install-recommends nodejs npm curl 2>&1\n");
         s.append("fi\n\n");
 
-        s.append("if ! command -v codex >/dev/null 2>&1; then\n");
+        s.append("if ! command -v codex >/dev/null 2>&1 || [ \"$_codex_current\" != \"$CODEX_TARGET_VERSION\" ]; then\n");
         s.append("    npm config set registry https://registry.npmmirror.com 2>/dev/null\n");
-        s.append("    echo '[*] Installing Codex CLI (npm install -g @openai/codex)...'\n");
-        s.append("    npm install -g @openai/codex 2>&1\n");
+        s.append("    echo '[*] Installing Codex CLI (npm install -g ").append(RuntimeVersions.CODEX_NPM_SPEC).append(")...'\n");
+        s.append("    npm install -g ").append(RuntimeVersions.CODEX_NPM_SPEC).append(" 2>&1\n");
         s.append("fi\n\n");
 
-        s.append("if ! command -v codex >/dev/null 2>&1; then\n");
-        s.append("    echo '[!] Codex CLI install failed. Please retry: npm install -g @openai/codex'\n");
+        s.append("_codex_current=$(codex --version 2>/dev/null | grep -oE '[0-9]+\\.[0-9]+\\.[0-9]+' | head -1 || true)\n");
+        s.append("if ! command -v codex >/dev/null 2>&1 || [ \"$_codex_current\" != \"$CODEX_TARGET_VERSION\" ]; then\n");
+        s.append("    echo '[!] Codex CLI install failed. Please retry: npm install -g ").append(RuntimeVersions.CODEX_NPM_SPEC).append("'\n");
         s.append("    return 1 2>/dev/null || exit 1\n");
         s.append("fi\n\n");
 

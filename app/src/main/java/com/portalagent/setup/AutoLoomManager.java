@@ -196,7 +196,8 @@ public class AutoLoomManager {
             s.append("echo '[!] Local Loom archive was not prepared; using online fallback if needed.'\n");
         }
         s.append("_tgz='").append(loomTgzPath).append("'\n");
-        s.append("_base='https://github.com/agentserver/loom/releases/latest/download'\n");
+        s.append("_base='https://github.com/agentserver/loom/releases/download/")
+            .append(RuntimeVersions.LOOM_VERSION).append("'\n");
         s.append("_claude_skills_dst='/home/claude/loom-driver/.claude/skills'\n");
         s.append("_codex_skills_dst='/home/codex/.codex/skills/loom-driver'\n\n");
 

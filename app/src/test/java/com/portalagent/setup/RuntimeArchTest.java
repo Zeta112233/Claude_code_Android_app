@@ -31,7 +31,8 @@ public class RuntimeArchTest {
         assertEquals("x86_64", arch.prootDistroArch());
         assertEquals("amd64", arch.ubuntuBaseArch());
         assertEquals("agentserver-linux-amd64.tar.gz", arch.agentServerArchiveName());
-        assertEquals("https://github.com/agentserver/agentserver/releases/download/v0.48.1/agentserver-linux-amd64.tar.gz",
+        assertEquals("https://github.com/agentserver/agentserver/releases/download/" +
+                RuntimeVersions.AGENTSERVER_VERSION + "/agentserver-linux-amd64.tar.gz",
             arch.agentServerDownloadUrl());
         assertEquals("linux-amd64", arch.loomAssetArch());
         assertEquals("@anthropic-ai/claude-code-linux-x64", arch.claudeNativePackage());

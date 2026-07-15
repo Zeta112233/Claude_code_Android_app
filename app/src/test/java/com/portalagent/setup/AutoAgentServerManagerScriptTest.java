@@ -13,7 +13,7 @@ public class AutoAgentServerManagerScriptTest {
             true, RuntimeArch.forAbiForTest("arm64-v8a"));
 
         assertTrue(script.contains("_tgz='/tmp/agentserver-linux-arm64.tar.gz'"));
-        assertTrue(script.contains("releases/download/v0.48.1/agentserver-linux-arm64.tar.gz"));
+        assertTrue(script.contains("releases/download/" + RuntimeVersions.AGENTSERVER_VERSION + "/agentserver-linux-arm64.tar.gz"));
     }
 
     @Test
@@ -22,7 +22,7 @@ public class AutoAgentServerManagerScriptTest {
             false, RuntimeArch.forAbiForTest("x86_64"));
 
         assertTrue(script.contains("_tgz='/tmp/agentserver-linux-amd64.tar.gz'"));
-        assertTrue(script.contains("releases/download/v0.48.1/agentserver-linux-amd64.tar.gz"));
+        assertTrue(script.contains("releases/download/" + RuntimeVersions.AGENTSERVER_VERSION + "/agentserver-linux-amd64.tar.gz"));
         assertFalse(script.contains("agentserver-linux-arm64.tar.gz"));
     }
 }
