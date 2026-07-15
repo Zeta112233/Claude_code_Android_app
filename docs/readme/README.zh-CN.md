@@ -169,7 +169,11 @@ adb shell dumpsys package com.portalagent | findstr /i "versionName versionCode"
 
 ## 信任与安全
 
-当用户授予权限后，PortalAgent 可以暴露强大的手机控制能力。请把它作为可信本地自动化应用使用，而不是用于不可信 Prompt 或未知远程操作者的沙箱。
+PortalAgent 是实验性的本地自动化应用。用户授予权限后，它可以把较强的手机控制能力暴露给本地 Agent 和协作工作流。
+
+不要把 PortalAgent 视为强化过的安全边界。权限弹窗、工作区设置和工具检查主要用于降低误操作风险，并让行为更容易被查看；它们不能保证 Prompt、工具、依赖、远程服务或底层 Android/Linux 运行时一定不会出现非预期行为。
+
+请只在你愿意信任该设备上的 Agent、Prompt、仓库、账号和远程协作者时使用 PortalAgent。涉及敏感应用或私有数据时，应先确认所需权限，并理解相应风险。
 
 启用能力前，请确认 Agent 是否应当被允许：
 
@@ -179,7 +183,7 @@ adb shell dumpsys package com.portalagent | findstr /i "versionName versionCode"
 - 使用相机、剪贴板、传感器或设备状态工具。
 - 连接远程协作服务。
 
-当前产品边界是权限优先、工具级别的控制边界。它应被视为用户控制和安全边界，而不是完整的操作系统沙箱。
+当前产品边界是权限优先、工具级别的控制模型。它不是完整的操作系统沙箱、恶意软件隔离层，也不能防御恶意指令。
 
 安全策略：[SECURITY.md](../../SECURITY.md)
 

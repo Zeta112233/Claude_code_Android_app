@@ -169,7 +169,11 @@ adb shell dumpsys package com.portalagent | findstr /i "versionName versionCode"
 
 ## Trust And Safety
 
-PortalAgent can expose powerful phone-control abilities when the user grants them. Treat it as a trusted local automation app, not as a sandbox for untrusted prompts or unknown remote operators.
+PortalAgent is an experimental local automation app. When permissions are granted, it can expose powerful phone-control abilities to local agents and collaboration workflows.
+
+Do not treat PortalAgent as a hardened security boundary. Its permission prompts, workspace settings, and tool checks are intended to reduce accidental access and make behavior easier to inspect; they are not a guarantee that prompts, tools, dependencies, remote services, or the underlying Android/Linux runtime cannot behave unexpectedly.
+
+Use PortalAgent only with agents, prompts, repositories, accounts, and remote collaborators you are prepared to trust on that device. Avoid using it with sensitive apps or private data unless you have reviewed the required permissions and understand the risk.
 
 Before enabling a capability, decide whether the agent should be allowed to:
 
@@ -179,7 +183,7 @@ Before enabling a capability, decide whether the agent should be allowed to:
 - Use camera, clipboard, sensors, or device status tools.
 - Connect to remote collaboration services.
 
-The current product boundary is permission-first and tool-level. It should be treated as a user control and safety boundary, not as a complete operating system sandbox.
+The current product boundary is permission-first and tool-level. It is a user-control model, not a complete operating system sandbox, malware containment layer, or defense against malicious instructions.
 
 Security policy: [SECURITY.md](SECURITY.md)
 
